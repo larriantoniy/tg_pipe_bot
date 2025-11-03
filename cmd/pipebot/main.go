@@ -57,20 +57,17 @@ func main() {
 				logger.Error("No target channel for capper", "capper", capper)
 				continue
 			}
-
 			chatId, err := strconv.ParseInt(chatIdStr, 10, 64)
 			if err != nil {
 				logger.Error("Invalid chat ID for capper", "chat_id str", chatIdStr, "err", err)
 				continue
 			}
-
 			err = tdClient.SendMessage(chatId, formatted)
 			if err != nil {
 				logger.Error("SendMessage failed", "chat_name", msg.ChatName, "text", msg.Text, "error", err)
 				continue
 			}
 		}
-
 		logger.Warn("Listen exited — вероятно упало соединение, пробуем снова...")
 	}
 }
