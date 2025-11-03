@@ -103,54 +103,52 @@ func (t *TDLibClient) Listen() (<-chan domain.Message, error) {
 	return out, nil
 }
 
-func (t *TDLibClient) GetAdminChannels() (map[string]string, error) {
-	result := make(map[string]string)
+func (t *TDLibClient) GetAdminChannelsSimple() (map[string]string, error) {
+	const prefix = "Слив Платок " // вот тут ключевое изменение
 
-	chats, err := t.client.GetChats(&client.GetChatsRequest{Limit: 500})
+	res := make(map[string]string)
+
+	chats, err := t.client.GetChats(&client.GetChatsRequest{Limit: 1000})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get chats: %w", err)
 	}
 
-	const prefix = "Слив каппера "
+	lp := strings.ToLower(prefix)
+
 	for _, chatID := range chats.ChatIds {
 		chat, err := t.client.GetChat(&client.GetChatRequest{ChatId: chatID})
 		if err != nil {
 			continue
 		}
 
-		sgType, ok := chat.Type.(*client.ChatTypeSupergroup)
-		if !ok {
+		// Только супергруппы/каналы
+		if _, ok := chat.Type.(*client.ChatTypeSupergroup); !ok {
 			continue
 		}
 
-		sg, err := t.client.GetSupergroup(&client.GetSupergroupRequest{SupergroupId: sgType.SupergroupId})
-		if err != nil || !sg.IsChannel {
+		title := strings.TrimSpace(chat.Title)
+		if !strings.HasPrefix(strings.ToLower(title), lp) {
 			continue
 		}
 
-		member, err := t.client.GetChatMember(&client.GetChatMemberRequest{
-			ChatId:   chat.Id,
-			MemberId: &client.MessageSenderUser{UserId: t.selfId},
-		})
-		if err != nil {
+		// Имя каппера после префикса
+		name := strings.TrimSpace(title[len(prefix):])
+		name = strings.TrimRight(name, ",.;: \t")
+		if name == "" {
 			continue
 		}
 
-		switch member.Status.(type) {
-		case *client.ChatMemberStatusAdministrator, *client.ChatMemberStatusCreator:
-			title := strings.TrimSpace(chat.Title)
-			if !strings.HasPrefix(strings.ToLower(title), strings.ToLower(prefix)) {
-				continue
-			}
-			capperName := strings.TrimSpace(title[len(prefix):])
-			// убираем хвостовые знаки и нормализуем регистр
-			capperName = strings.TrimRight(capperName, ",.;: \t")
-			if capperName != "" {
-				result[capperName] = fmt.Sprintf("%d", chat.Id)
-			}
-		}
+		res[name] = fmt.Sprintf("%d", chat.Id)
 	}
-	return result, nil
+
+	return res, nil
+}
+
+func normalizeCapper(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ToLower(s)
+	s = strings.ReplaceAll(s, "ё", "е")
+	return s
 }
 
 func (t *TDLibClient) getChatTitle(chatID int64) (string, error) {
