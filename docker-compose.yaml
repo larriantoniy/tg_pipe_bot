@@ -1,0 +1,21 @@
+
+services:
+  bot:
+    image: ${DOCKER_USERNAME}/tg_pipe_bot:main
+    container_name: tg-pipe-bot
+    restart: unless-stopped
+    ports:
+      - "7230:7230"
+    env_file:
+      - .env
+      #  переменные окружения при необходимости (см. ниже)
+    # Для первой авторизации Telegram юзер-бота:
+    stdin_open: true   # открыть STDIN
+    tty: true          # выделить TTY для взаимодействия
+    volumes:
+      - tdlib_db_data:/tdlib-db
+      - tdlib_files_data:/tdlib-files
+
+volumes:
+  tdlib_db_data:
+  tdlib_files_data:
