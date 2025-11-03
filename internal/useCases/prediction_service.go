@@ -77,67 +77,71 @@ func monthNum(m string) string {
 }
 
 // GetForecast загружает страницу прогноза каппера и находит прогноз для заданного матча.
-func (p *PredictionService) GetForecast(capper string, teams string, date string, baseURL string) (string, error) {
-	// Формируем URL на основе имени каппера
-	var stb strings.Builder
-	stb.WriteString(baseURL)
-	stb.WriteString(capper)
-	stb.WriteString("/")
-	stb.WriteString("bets?_pjax=%23profile")
-	url := stb.String()
-	// Запрашиваем HTML страницы
+func (p *PredictionService) GetForecast(capper, teams, _ /*dateIgnored*/, baseURL string) (string, error) {
+	// формируем URL
+	url := fmt.Sprintf("%s%s/bets?_pjax=%%23profile", baseURL, capper)
+
 	client := http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("не удалось загрузить страницу прогноза: %w", err)
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("получен неожиданный статус %d при загрузке %s", resp.StatusCode, url)
 	}
 
-	// Парсим HTML с помощью goquery
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("ошибка парсинга HTML: %w", err)
 	}
 
-	// Ищем в HTML прогноз с указанными командами (и датой, если есть)
+	teamA, teamB := splitTeams(teams)
 	var forecast string
-	doc.Find("*").FilterFunction(func(i int, s *goquery.Selection) bool {
-		text := s.Text()
-		if text == "" {
-			return false
+
+	// ищем первый блок, где присутствуют две команды
+	doc.Find(".UserBet").EachWithBreak(func(i int, bet *goquery.Selection) bool {
+		text := normSpaces(bet.Text())
+
+		// если блок не содержит обе команды — пропускаем
+		if !strings.Contains(text, teamA) || !strings.Contains(text, teamB) {
+			return true // continue
 		}
-		if !strings.Contains(text, teams) {
-			return false
-		}
-		if date != "" && !strings.Contains(text, date) {
-			return false
-		}
-		return true
-	}).EachWithBreak(func(i int, s *goquery.Selection) bool {
-		// Попали в элемент, содержащий и команды, и дату (если дата указана)
-		// Пытаемся найти конкретный элемент с текстом прогноза
-		forecast = strings.TrimSpace(s.Find(".forecast").Text())
-		if forecast == "" {
-			// Если нет отдельного блока с прогнозом, извлекаем текст, убрав команды и дату
-			fullText := s.Text()
-			// Удаляем упоминание команд
-			fullText = strings.Replace(fullText, teams, "", 1)
-			if date != "" {
-				fullText = strings.Replace(fullText, "("+date+")", "", 1)
-			}
-			// Убираем двоеточие и лишние пробелы
-			forecast = strings.TrimSpace(strings.TrimPrefix(fullText, ":"))
-		}
-		return false // останавливаем поиск после первого совпадения
+
+		// вырезаем команды
+		text = strings.Replace(text, teamA, "", 1)
+		text = strings.Replace(text, teamB, "", 1)
+
+		forecast = strings.TrimSpace(text)
+		return false // нашли — stop
 	})
 
 	if forecast == "" {
 		return "", fmt.Errorf("прогноз для матча '%s' не найден на странице %s", teams, url)
 	}
+
 	return forecast, nil
+}
+
+// --- helpers ---
+
+func normSpaces(s string) string {
+	s = strings.ReplaceAll(s, "\u00A0", " ")
+	s = strings.Join(strings.Fields(s), " ")
+	return s
+}
+
+func splitTeams(teams string) (string, string) {
+	parts := strings.Split(teams, " - ")
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	parts = strings.Split(teams, "-")
+	if len(parts) == 2 {
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	}
+	return teams, ""
 }
 
 // валидатор отсутствия исхода (ставки типа Ф1/П1/ТБ и т.д.)
