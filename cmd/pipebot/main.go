@@ -51,6 +51,8 @@ func main() {
 				logger.Error("GetFormattedPrediction", "chat_id", msg.ChatID, "text", msg.Text, "error", err)
 				continue
 			}
+			logger.Warn("After format", "capper", capper, "formatted", formatted)
+			logger.Warn("adminChans", adminChans, "adminChans[capper]", adminChans[capper])
 			chatIdStr, ok := adminChans[capper]
 			if !ok || chatIdStr == "" {
 				logger.Error("No target channel for capper", "capper", capper)
