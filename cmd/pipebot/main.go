@@ -32,7 +32,7 @@ func main() {
 		logger.Error("TDLib init failed", "error", err)
 		os.Exit(1)
 	}
-	adminChans, err := tdClient.GetAdminChannels()
+	adminChans, err := tdClient.GetAdminChannelsSimple()
 	if err != nil {
 		logger.Error("TDLib get admin channels failed", "error", err)
 	}

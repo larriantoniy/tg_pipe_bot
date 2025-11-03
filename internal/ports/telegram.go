@@ -11,6 +11,6 @@ type TelegramClient interface {
 	// Listen возвращает канал доменных сообщений
 	Listen() (<-chan domain.Message, error)
 	ProcessUpdateNewMessage(out chan domain.Message, upd *client.UpdateNewMessage) (<-chan domain.Message, error)
-	GetAdminChannels() (map[string]string, error)
+	GetAdminChannelsSimple() (map[string]string, error)
 	SendMessage(chatID int64, text string) error
 }
