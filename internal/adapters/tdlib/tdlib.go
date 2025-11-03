@@ -145,9 +145,8 @@ func (t *TDLibClient) GetAdminChannels() (map[string]string, error) {
 			capperName := strings.TrimSpace(title[len(prefix):])
 			// убираем хвостовые знаки и нормализуем регистр
 			capperName = strings.TrimRight(capperName, ",.;: \t")
-			key := normalizeCapper(capperName)
-			if key != "" {
-				result[key] = fmt.Sprintf("%d", chat.Id)
+			if capperName != "" {
+				result[capperName] = fmt.Sprintf("%d", chat.Id)
 			}
 		}
 	}
