@@ -50,15 +50,24 @@ func main() {
 			capper, formatted, err := ps.GetFormatedPrediction(msg, cfg.BasePredictUrl)
 			if err != nil {
 				logger.Error("GetFormattedPrediction", "chat_id", msg.ChatID, "text", msg.Text, "error", err)
+				continue
 			}
-			chatIdStr := adminChans[capper]
+			chatIdStr, ok := adminChans[capper]
+			if !ok || chatIdStr == "" {
+				logger.Error("No target channel for capper", "capper", capper)
+				continue
+			}
+
 			chatId, err := strconv.ParseInt(chatIdStr, 10, 64)
 			if err != nil {
-				logger.Error("GetFormattedPrediction ", "chat_id str", chatIdStr, "err", err)
+				logger.Error("Invalid chat ID for capper", "chat_id str", chatIdStr, "err", err)
+				continue
 			}
+
 			err = tdClient.SendMessage(chatId, formatted)
 			if err != nil {
 				logger.Error("SendMessage failed", "chat_name", msg.ChatName, "text", msg.Text, "error", err)
+				continue
 			}
 		}
 
