@@ -3,7 +3,6 @@ package tdlib
 import (
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
 
 	"github.com/larriantoniy/tg_pipe_bot/internal/domain"
@@ -107,8 +106,9 @@ func (t *TDLibClient) Listen() (<-chan domain.Message, error) {
 func (t *TDLibClient) GetAdminChannels() (map[string]string, error) {
 	result := make(map[string]string)
 
+	// Загружаем список чатов
 	chats, err := t.client.GetChats(&client.GetChatsRequest{
-		Limit: 5000,
+		Limit: 500,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get chats: %w", err)
@@ -120,7 +120,7 @@ func (t *TDLibClient) GetAdminChannels() (map[string]string, error) {
 			continue
 		}
 
-		// интересуют только супергруппы/каналы
+		// Интересуют только супергруппы/каналы
 		sgType, ok := chat.Type.(*client.ChatTypeSupergroup)
 		if !ok {
 			continue
@@ -133,12 +133,12 @@ func (t *TDLibClient) GetAdminChannels() (map[string]string, error) {
 			continue
 		}
 
-		// канал = супергруппа с IsChannel = true
+		// Только каналы (а не чаты-супергруппы)
 		if !sg.IsChannel {
 			continue
 		}
 
-		// проверяем статус ИМЕННО нашего пользователя в этом чате
+		// Проверяем, что мы админ
 		member, err := t.client.GetChatMember(&client.GetChatMemberRequest{
 			ChatId: chat.Id,
 			MemberId: &client.MessageSenderUser{
@@ -149,30 +149,28 @@ func (t *TDLibClient) GetAdminChannels() (map[string]string, error) {
 			continue
 		}
 
-		// admin/owner только
 		switch member.Status.(type) {
 		case *client.ChatMemberStatusAdministrator, *client.ChatMemberStatusCreator:
-			// ищем паттерн "Слив каппера CapperName"
+			// ищем название "Слив каппера <Name>"
 			title := strings.TrimSpace(chat.Title)
 			const prefix = "Слив каппера "
 
-			// сравниваем без учёта регистра
 			if !strings.HasPrefix(strings.ToLower(title), strings.ToLower(prefix)) {
 				continue
 			}
 
+			// извлекаем имя каппера без запятых/пробелов
 			capperName := strings.TrimSpace(title[len(prefix):])
+			capperName = strings.TrimRight(capperName, ", ")
+
 			if capperName == "" {
 				continue
 			}
 
-			// экранируем имя (вдруг в нём спецсимволы реґекса)
-			reKey := fmt.Sprintf(`(?i)Слив каппера\s+%s`, regexp.QuoteMeta(capperName))
-			result[reKey] = fmt.Sprintf("%d", chat.Id)
-		default:
-			// не админ — пропускаем
-			continue
+			// сохраняем: ключ = имя каппера, значение = chatId
+			result[capperName] = fmt.Sprintf("%d", chat.Id)
 		}
+
 	}
 
 	return result, nil

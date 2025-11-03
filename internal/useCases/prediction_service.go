@@ -27,7 +27,7 @@ func NewPredictionService(logger *slog.Logger) *PredictionService {
 		logger:       logger,
 		outcomeRe:    regexp.MustCompile(`(?i)(Т[БМ]\s*\([^)]*\)|Ф[12]\s*\([^)]*\)|П[12]|X|1X|12|X2)`), // вытаскиваем исход (ТБ/ТМ/Ф1/... )
 		coefRe:       regexp.MustCompile(`(~\d+(\.\d+)?|\b\d+(\.\d+)?\b)`),                             // вытаскиваем коэффициент "~2", "2.05" и т.п.
-		capperLineRe: regexp.MustCompile(`(?i)^Каппер\s*-\s*([^,]+?)\s*добавил\b`),
+		capperLineRe: regexp.MustCompile(`^Каппер\s*-\s*([^\s,]+)(?:\s+добавил)?[,;]?\s*$`),
 		teamsLineRe:  regexp.MustCompile(`^\s*.+\s-\s.+,\s*$`), // Линия с командами — ищем строку с " - " и запятой на конце (как в примере)
 	}
 }
