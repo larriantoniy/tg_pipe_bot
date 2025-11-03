@@ -17,7 +17,3 @@ docker-up:
 # Остановка всех контейнеров
 docker-down:
 	docker compose down
-
-# Инициализация RediSearch
-init-redis:
-	docker compose exec redis bash -c "bash /scripts/init_redis_search.sh"
