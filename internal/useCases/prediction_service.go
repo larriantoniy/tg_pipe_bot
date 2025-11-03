@@ -20,6 +20,7 @@ type PredictionService struct {
 	coefRe       *regexp.Regexp
 	capperLineRe *regexp.Regexp
 	teamsLineRe  *regexp.Regexp
+	startLineRe  *regexp.Regexp
 }
 
 func NewPredictionService(logger *slog.Logger) *PredictionService {
@@ -29,6 +30,7 @@ func NewPredictionService(logger *slog.Logger) *PredictionService {
 		coefRe:       regexp.MustCompile(`(~\d+(\.\d+)?|\b\d+(\.\d+)?\b)`),                             // вытаскиваем коэффициент "~2", "2.05" и т.п.
 		capperLineRe: regexp.MustCompile(`^Каппер\s*-\s*([^\s,]+)(?:\s+добавил)?[,;]?\s*$`),
 		teamsLineRe:  regexp.MustCompile(`^\s*.+\s-\s.+,\s*$`), // Линия с командами — ищем строку с " - " и запятой на конце (как в примере)
+		startLineRe:  regexp.MustCompile(`(?i)^Начало\s+матча\s+(.+)$`),
 	}
 }
 
@@ -227,12 +229,6 @@ func splitTeams(teams string) (string, string) {
 	return teams, ""
 }
 
-// валидатор отсутствия исхода (ставки типа Ф1/П1/ТБ и т.д.)
-var outcomeRe = regexp.MustCompile(`(?i)\b(Ф[12]\s*\([^)]*\)|П[12]\b|(?:^|\W)X(?:$|\W)|\b1X\b|\b12\b|\bX2\b|Т[БМ]\s*\d+(\.\d+)?|\bОЗ\b|\bобе забьют\b)`)
-
-// Линия даты: "Начало матча 02 ноября 23:30" (оставим как есть)
-var startLineRe = regexp.MustCompile(`(?i)^Начало\s+матча\s+(.+)$`)
-
 // Маркер строго нужного типа сообщения
 const newForecastMarker = "Новый прогноз - -"
 
@@ -259,7 +255,7 @@ func (p *PredictionService) ExtractCapperAndMatch(message string) (capper string
 	}
 
 	// исход (тип ставки) НЕ должен быть указан
-	if outcomeRe.FindStringIndex(msg) != nil {
+	if p.outcomeRe.FindStringIndex(msg) != nil {
 		return "", "", "", "", "", errors.New("пропуск: в сообщении найден исход (Ф/П/ТБ/ТМ/1X/12/X2/ОЗ)")
 	}
 
@@ -315,7 +311,7 @@ func (p *PredictionService) ExtractCapperAndMatch(message string) (capper string
 
 		// 4) дата/время из "Начало матча ..."
 		if !dateFound {
-			if m := startLineRe.FindStringSubmatch(line); len(m) == 2 {
+			if m := p.startLineRe.FindStringSubmatch(line); len(m) == 2 {
 				date = strings.TrimSpace(m[1]) // например: "05 ноября 02:30"
 				dateFound = true
 				continue
