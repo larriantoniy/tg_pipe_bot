@@ -45,7 +45,6 @@ func main() {
 		}
 
 		for msg := range updates {
-
 			logger.Info("New message", "chat_id", msg.ChatID, "text", msg.Text)
 			capper, formatted, err := ps.GetFormatedPrediction(msg, cfg.BasePredictUrl)
 			if err != nil {
