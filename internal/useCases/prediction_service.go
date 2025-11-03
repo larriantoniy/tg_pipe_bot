@@ -25,15 +25,25 @@ type PredictionService struct {
 
 func NewPredictionService(logger *slog.Logger) *PredictionService {
 	return &PredictionService{
-		logger:       logger,
-		outcomeRe:    regexp.MustCompile(`(?i)(Т[БМ]\s*\([^)]*\)|Ф[12]\s*\([^)]*\)|П[12]|X|1X|12|X2)`), // вытаскиваем исход (ТБ/ТМ/Ф1/... )
-		coefRe:       regexp.MustCompile(`(~\d+(\.\d+)?|\b\d+(\.\d+)?\b)`),                             // вытаскиваем коэффициент "~2", "2.05" и т.п.
+		logger: logger,
+
+		// ловим: ТБ/ТМ 2.5 (со/без скобок), Ф1/Ф2 -1.5 (со/без скобок), П1/П2, X, 1X, 12, X2, ОЗ
+		outcomeRe: regexp.MustCompile(`(?i)\b(
+			Т[БМ]\s*\(?\s*\d+(?:[.,]\d+)?\s*\)? |
+			Ф[12]\s*\(?\s*[-+]?\d+(?:[.,]\d+)?\s*\)? |
+			П[12] |
+			1X | 12 | X2 | ОЗ | X
+		)\b`),
+
+		// кф в нужном блоке всегда вида "~число" — держим только такой шаблон,
+		// чтобы не путать со ставками "400 у.е." и суммами.
+		coefRe: regexp.MustCompile(`~\s*\d+(?:[.,]\d+)?`),
+
 		capperLineRe: regexp.MustCompile(`^Каппер\s*-\s*([^\s,]+)(?:\s+добавил)?[,;]?\s*$`),
-		teamsLineRe:  regexp.MustCompile(`^\s*.+\s-\s.+,\s*$`), // Линия с командами — ищем строку с " - " и запятой на конце (как в примере)
+		teamsLineRe:  regexp.MustCompile(`^\s*.+\s-\s.+,\s*$`),
 		startLineRe:  regexp.MustCompile(`(?i)^Начало\s+матча\s+(.+)$`),
 	}
 }
-
 func (p *PredictionService) FormatBetMessage(teams, date, sport, league, outcome, coef string) string {
 	// 1) дата
 	parts := strings.Fields(date)
@@ -174,20 +184,22 @@ func (p *PredictionService) GetOutcomeAndCoef(capper, teams, baseURL string) (ou
 
 	teamA, teamB := splitTeams(teams)
 
-	found := false
+	var found bool
 	doc.Find(".UserBet").EachWithBreak(func(i int, bet *goquery.Selection) bool {
-		// Уточняем матч по колонке с командами
+		// 1) Проверяем, что это нужный матч
 		sides := normSpaces(bet.Find(".sides").Text())
 		if !(strings.Contains(sides, teamA) && strings.Contains(sides, teamB)) {
 			return true // continue
 		}
 
-		// Берём весь текст блока — на мобиле исход/кф могут быть в других подпоколонках
+		// 2) Берём полный текст блока — на мобилке куски могут быть в разных колонках
 		text := normSpaces(bet.Text())
 
+		// 3) Ищем исход и кф
 		outcome = strings.TrimSpace(p.outcomeRe.FindString(text))
 		coef = strings.TrimSpace(p.coefRe.FindString(text))
 
+		// «~» оставляем как есть (теперь coefRe всегда его включает)
 		if outcome != "" || coef != "" {
 			found = true
 			return false // stop
