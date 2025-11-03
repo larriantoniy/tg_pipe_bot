@@ -211,6 +211,7 @@ func (t *TDLibClient) processMessageText(out chan domain.Message, msg *client.Me
 	return out, nil
 }
 func (t *TDLibClient) SendMessage(chatID int64, text string) error {
+
 	// Формируем контент сообщения
 	content := &client.InputMessageText{
 		Text: &client.FormattedText{

@@ -241,7 +241,7 @@ func (p *PredictionService) GetFormatedPrediction(msg domain.Message, baseURL st
 	}
 
 	// 2) Парсим сайт каппера и находим конкретный прогноз под этот матч/дату
-	forecast, err := p.GetForecast(capper, teams, date, strings.TrimRight(baseURL, "/")+"/users/")
+	forecast, err := p.GetForecast(capper, teams, date, strings.TrimRight(baseURL, "/"))
 	if err != nil {
 		p.logger.Error("fetch forecast failed", "capper", capper, "teams", teams, "date", date, "err", err)
 		return "", "", err
