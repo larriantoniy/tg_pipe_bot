@@ -26,7 +26,7 @@ func Load() (*Config, error) {
 	apiHash := os.Getenv("TELEGRAM_API_HASH")
 	basePredictCh := os.Getenv("BASE_PREDICTION_CH")
 	basePredictUrl := os.Getenv("BASE_PREDICTION_URL")
-
+	fmt.Println("apiIDSTR", apiIDStr)
 	if apiIDStr == "" || apiHash == "" || basePredictUrl == "" || basePredictCh == "" {
 		return nil, fmt.Errorf("TELEGRAM_API_ID, TELEGRAM_API_HASH , BASE_PREDICTION_CH , BASE_PREDICTION_URL должны быть заданы")
 	}
@@ -74,5 +74,6 @@ func fetchConfigPath() string {
 	if res == "" {
 		res = os.Getenv("CONFIG_PATH")
 	}
+
 	return res
 }
