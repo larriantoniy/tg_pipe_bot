@@ -256,17 +256,27 @@ func (p *PredictionService) ExtractCapperAndMatch(message string) (capper string
 	msg := strings.ReplaceAll(message, "\r\n", "\n")
 	msg = strings.ReplaceAll(msg, "\r", "\n")
 
-	// обязательный маркер "Новый прогноз - -"
-	if !strings.Contains(msg, newForecastMarker) {
-		return "", "", "", "", "", errors.New("пропуск: отсутствует строка 'Новый прогноз - -'")
-	}
-
 	// исход (тип ставки) НЕ должен быть указан
 	if p.outcomeRe.FindStringIndex(msg) != nil {
 		return "", "", "", "", "", errors.New("пропуск: в сообщении найден исход (Ф/П/ТБ/ТМ/1X/12/X2/ОЗ)")
 	}
 
+	hasMarker := strings.Contains(msg, newForecastMarker)
+
+	// универсальные регексы для fallback
+	altTeamsRe := regexp.MustCompile(`^\s*.+\s[—-]\s.+,?\s*$`) // "A — B", "A - B", запятая опциональна
+	clockLineRe := regexp.MustCompile(`^\s*🕓\s*(.+)$`)         // "🕓 05.11 — 04:00"
+	ignorePrefix := func(s string) bool {                      // строки, которые игнорим при поиске спорта/лиги
+		s = strings.TrimSpace(s)
+		return s == "" ||
+			s == newForecastMarker ||
+			strings.HasPrefix(s, "🎯") ||
+			strings.HasPrefix(s, "📈")
+	}
+
 	sc := bufio.NewScanner(strings.NewReader(msg))
+
+	// Общие флаги
 	var (
 		capperFound  bool
 		markerPassed bool
@@ -276,19 +286,97 @@ func (p *PredictionService) ExtractCapperAndMatch(message string) (capper string
 		dateFound    bool
 	)
 
+	if hasMarker {
+		// --- ЖЁСТКИЙ РЕЖИМ (как было) ---
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line == "" {
+				continue
+			}
+
+			// ловим сам маркер как отдельную строку
+			if !markerPassed && line == newForecastMarker {
+				markerPassed = true
+				continue
+			}
+
+			// 1) каппер
+			if !capperFound {
+				if m := p.capperLineRe.FindStringSubmatch(line); len(m) == 2 {
+					capper = strings.TrimSpace(m[1])
+					capperFound = true
+					continue
+				}
+			}
+
+			// 2) сразу после маркера: спорт и лига
+			if markerPassed && !sportFound {
+				sport = line // например: "Футбол", "Теннис", "Баскетбол"
+				sportFound = true
+				continue
+			}
+			if markerPassed && sportFound && !leagueFound {
+				league = line // берём строку целиком, например: "Чемпионат Венесуэлы. Примера дивизион"
+				leagueFound = true
+				continue
+			}
+
+			// 3) команды (строка вида "Team A - Team B,")
+			if !teamsFound && (p.teamsLineRe.MatchString(line) || altTeamsRe.MatchString(line)) {
+				teams = strings.TrimRight(strings.TrimSpace(line), ", ")
+				teamsFound = true
+				continue
+			}
+
+			// 4) дата/время из "Начало матча ..." или "🕓 ..."
+			if !dateFound {
+				if m := p.startLineRe.FindStringSubmatch(line); len(m) == 2 {
+					date = strings.TrimSpace(m[1]) // например: "05 ноября 02:30"
+					dateFound = true
+					continue
+				}
+				if m := clockLineRe.FindStringSubmatch(line); len(m) == 2 {
+					date = strings.TrimSpace(m[1]) // например: "05.11 — 04:00"
+					dateFound = true
+					continue
+				}
+			}
+		}
+
+		// валидация как раньше (капер обязателен в жёстком режиме)
+		if err := sc.Err(); err != nil {
+			return "", "", "", "", "", fmt.Errorf("ошибка сканирования: %w", err)
+		}
+		if !capperFound {
+			return "", "", "", "", "", errors.New("не удалось извлечь имя каппера")
+		}
+		if !sportFound {
+			return "", "", "", "", "", errors.New("не удалось извлечь вид спорта")
+		}
+		if !leagueFound {
+			return "", "", "", "", "", errors.New("не удалось извлечь лигу/турнир")
+		}
+		if !teamsFound {
+			return "", "", "", "", "", errors.New("не удалось извлечь команды матча")
+		}
+		if !dateFound {
+			return "", "", "", "", "", errors.New("не удалось извлечь дату/время начала матча")
+		}
+		return capper, sport, league, teams, date, nil
+	}
+
+	// --- МЯГКИЙ РЕЖИМ (fallback, без маркера) ---
+	// Сначала пройдёмся и попробуем вытащить каппера, дату и команды «как есть»,
+	// параллельно соберём «чистые» строки для определения спорта/лиги.
+	var clean []string
+
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
 			continue
 		}
 
-		// ловим сам маркер как отдельную строку
-		if !markerPassed && line == newForecastMarker {
-			markerPassed = true
-			continue
-		}
-
-		// 1) каппер
+		// 0) каппер (необязателен в fallback)
 		if !capperFound {
 			if m := p.capperLineRe.FindStringSubmatch(line); len(m) == 2 {
 				capper = strings.TrimSpace(m[1])
@@ -297,32 +385,31 @@ func (p *PredictionService) ExtractCapperAndMatch(message string) (capper string
 			}
 		}
 
-		// 2) сразу после маркера: спорт и лига
-		if markerPassed && !sportFound {
-			sport = line // например: "Футбол", "Теннис", "Баскетбол"
-			sportFound = true
-			continue
-		}
-		if markerPassed && sportFound && !leagueFound {
-			league = line // берём строку целиком, например: "Чемпионат Венесуэлы. Примера дивизион"
-			leagueFound = true
-			continue
+		// 1) дата (🕓 … или Начало матча …)
+		if !dateFound {
+			if m := clockLineRe.FindStringSubmatch(line); len(m) == 2 {
+				date = strings.TrimSpace(m[1])
+				dateFound = true
+				// не добавляем эту строку в clean — это не спорт/лига
+				continue
+			}
+			if m := p.startLineRe.FindStringSubmatch(line); len(m) == 2 {
+				date = strings.TrimSpace(m[1])
+				dateFound = true
+				continue
+			}
 		}
 
-		// 3) команды (строка вида "Team A - Team B,")
-		if !teamsFound && p.teamsLineRe.MatchString(line) {
-			teams = strings.TrimRight(line, ", ")
+		// 2) команды (расширенное правило)
+		if !teamsFound && (p.teamsLineRe.MatchString(line) || altTeamsRe.MatchString(line)) {
+			teams = strings.TrimRight(strings.TrimSpace(line), ", ")
 			teamsFound = true
 			continue
 		}
 
-		// 4) дата/время из "Начало матча ..."
-		if !dateFound {
-			if m := p.startLineRe.FindStringSubmatch(line); len(m) == 2 {
-				date = strings.TrimSpace(m[1]) // например: "05 ноября 02:30"
-				dateFound = true
-				continue
-			}
+		// 3) копим потенциальные строки для спорта/лиги
+		if !ignorePrefix(line) {
+			clean = append(clean, line)
 		}
 	}
 
@@ -330,21 +417,35 @@ func (p *PredictionService) ExtractCapperAndMatch(message string) (capper string
 		return "", "", "", "", "", fmt.Errorf("ошибка сканирования: %w", err)
 	}
 
-	// валидация
-	if !capperFound {
-		return "", "", "", "", "", errors.New("не удалось извлечь имя каппера")
+	// Определяем спорт и лигу: первые две валидные строки
+	for _, line := range clean {
+		if !sportFound {
+			sport = line
+			sportFound = true
+			continue
+		}
+		if !leagueFound {
+			league = line
+			leagueFound = true
+			continue
+		}
+		if sportFound && leagueFound {
+			break
+		}
 	}
+
+	// финальная валидация в fallback (капер НЕ обязателен)
 	if !sportFound {
-		return "", "", "", "", "", errors.New("не удалось извлечь вид спорта")
+		return "", "", "", "", "", errors.New("не удалось извлечь вид спорта (fallback)")
 	}
 	if !leagueFound {
-		return "", "", "", "", "", errors.New("не удалось извлечь лигу/турнир")
+		return "", "", "", "", "", errors.New("не удалось извлечь лигу/турнир (fallback)")
 	}
 	if !teamsFound {
-		return "", "", "", "", "", errors.New("не удалось извлечь команды матча")
+		return "", "", "", "", "", errors.New("не удалось извлечь команды матча (fallback)")
 	}
 	if !dateFound {
-		return "", "", "", "", "", errors.New("не удалось извлечь дату/время начала матча")
+		return "", "", "", "", "", errors.New("не удалось извлечь дату/время начала матча (fallback)")
 	}
 
 	return capper, sport, league, teams, date, nil
