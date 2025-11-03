@@ -52,7 +52,11 @@ func main() {
 				continue
 			}
 			logger.Warn("After format", "capper", capper, "formatted", formatted)
-			logger.Warn("adminChans", adminChans, "adminChans[capper]", adminChans[capper])
+			slog.Warn("adminChans",
+				"map", adminChans,
+				"capper", capper,
+				"chatId", adminChans[capper],
+			)
 			chatIdStr, ok := adminChans[capper]
 			if !ok || chatIdStr == "" {
 				logger.Error("No target channel for capper", "capper", capper)
