@@ -219,7 +219,7 @@ func (t *TDLibClient) SendMessage(chatID int64, text string) error {
 		},
 		ClearDraft: true,
 	}
-
+	t.logger.Debug("Sending message", "chat_id", chatID, "content", content)
 	// Отправляем
 	_, err := t.client.SendMessage(&client.SendMessageRequest{
 		ChatId:              chatID,
