@@ -71,7 +71,7 @@ func main() {
 			}
 		}
 
-		logger.Warn("Listen exited — вероятно упало соединение, пробуем снова")
+		logger.Warn("Listen exited — вероятно упало соединение, пробуем снова...")
 	}
 }
 
