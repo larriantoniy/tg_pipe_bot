@@ -24,14 +24,11 @@ func Load() (*Config, error) {
 	cfg := MustLoadPath(path)
 	apiIDStr := os.Getenv("TELEGRAM_API_ID")
 	apiHash := os.Getenv("TELEGRAM_API_HASH")
-	basePredictCh := os.Getenv("BASE_PREDICTION_CH")
+	basePredictCh := os.Getenv("BASE_PREDICT_CH")
 	basePredictUrl := os.Getenv("BASE_PREDICTION_URL")
-	fmt.Println("apiIDSTR", apiIDStr)
-	fmt.Println("apiHash", apiHash)
-	fmt.Println("basePredictUrl", basePredictUrl)
-	fmt.Println("basePredictCh", basePredictCh)
+
 	if apiIDStr == "" || apiHash == "" || basePredictUrl == "" || basePredictCh == "" {
-		return nil, fmt.Errorf("TELEGRAM_API_ID, TELEGRAM_API_HASH , BASE_PREDICTION_CH , BASE_PREDICTION_URL должны быть заданы")
+		return nil, fmt.Errorf("TELEGRAM_API_ID, TELEGRAM_API_HASH , BASE_PREDICT_CH , BASE_PREDICTION_URL должны быть заданы")
 	}
 
 	apiID, err := strconv.Atoi(apiIDStr)
