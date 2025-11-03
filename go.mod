@@ -1,4 +1,4 @@
-module github.com/larriantoniy/tg_user_bot
+module github.com/larriantoniy/tg_pipe_bot
 
 go 1.23.0
 

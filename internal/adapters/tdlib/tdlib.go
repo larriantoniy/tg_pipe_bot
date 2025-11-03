@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/larriantoniy/tg_user_bot/internal/domain"
-	"github.com/larriantoniy/tg_user_bot/internal/ports"
+	"github.com/larriantoniy/tg_pipe_bot/internal/domain"
+	"github.com/larriantoniy/tg_pipe_bot/internal/ports"
 	"github.com/zelenin/go-tdlib/client"
 )
 

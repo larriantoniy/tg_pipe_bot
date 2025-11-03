@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/larriantoniy/tg_user_bot/internal/adapters/tdlib"
-	"github.com/larriantoniy/tg_user_bot/internal/config"
-	prediction "github.com/larriantoniy/tg_user_bot/internal/useCases"
+	"github.com/larriantoniy/tg_pipe_bot/internal/adapters/tdlib"
+	"github.com/larriantoniy/tg_pipe_bot/internal/config"
+	prediction "github.com/larriantoniy/tg_pipe_bot/internal/useCases"
 )
 
 const (

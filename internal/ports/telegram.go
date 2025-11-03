@@ -1,7 +1,7 @@
 package ports
 
 import (
-	"github.com/larriantoniy/tg_user_bot/internal/domain"
+	"github.com/larriantoniy/tg_pipe_bot/internal/domain"
 	"github.com/zelenin/go-tdlib/client"
 )
 
