@@ -33,22 +33,24 @@ func NewPredictionService(logger *slog.Logger) *PredictionService {
 }
 
 // FormatMessage форматирует прогноз в нужный вид
-func (p *PredictionService) FormatMessage(sport string, country string, teams string, date string, forecast string) string {
-	// Пример даты: "02 ноября 23:30"
+func (p *PredictionService) FormatMessage(teams string, date string, forecast string) string {
+	// 1) дата
 	parts := strings.Split(date, " ")
-
 	day := parts[0]
 	month := monthNum(parts[1])
 	timeStr := parts[len(parts)-1]
 	dateFormatted := fmt.Sprintf("%s.%s — %s", day, month, timeStr)
 
-	// исход
+	// 2) попытка извлечь спорт/страну из forecast
+	sport, country := extractSportCountry(forecast)
+
+	// 3) исход
 	outcome := p.outcomeRe.FindString(forecast)
 	if outcome == "" {
 		outcome = forecast
 	}
 
-	// коэффициент: сначала ищем `~число`, затем обычное
+	// 4) коэффициент: приоритет "~число"
 	coef := regexp.MustCompile(`~\s*\d+(\.\d+)?`).FindString(forecast)
 	if coef == "" {
 		coef = p.coefRe.FindString(forecast)
@@ -57,17 +59,75 @@ func (p *PredictionService) FormatMessage(sport string, country string, teams st
 		coef = "?"
 	}
 
-	// просто используем входные sport и country как есть
-	sportLine := fmt.Sprintf("%s %s", sport, country)
+	// 5) собираем вывод
+	var b strings.Builder
+	if sport != "" || country != "" {
+		// если нашли что-то — выводим первой строкой
+		if sport != "" && country != "" {
+			fmt.Fprintf(&b, "%s %s\n\n", sport, country)
+		} else if sport != "" {
+			fmt.Fprintf(&b, "%s\n\n", sport)
+		} else {
+			fmt.Fprintf(&b, "%s\n\n", country)
+		}
+	}
 
-	return fmt.Sprintf(
-		"%s\n\n🕓 %s\n%s\n\n🎯 %s\n📈 Кф: %s",
-		sportLine,
+	fmt.Fprintf(&b, "🕓 %s\n%s\n\n🎯 %s\n📈 Кф: %s",
 		dateFormatted,
 		teams,
 		strings.TrimSpace(outcome),
 		strings.TrimSpace(coef),
 	)
+	return b.String()
+}
+
+// --- ВСПОМОГАТЕЛЬНОЕ ---
+
+// Пытаемся вытащить спорт/страну из "шапки" текста прогноза.
+// Работает на строках вида: "Теннис ITF. Хамамацу. Женщины 04 нояб. 05:00 ... П1 ~2"
+func extractSportCountry(text string) (sport, country string) {
+	s := normSpaces(text)
+
+	// 1) обрезаем по времени/маркеру "Платный прогноз", чтобы осталась шапка
+	if i := strings.Index(s, "Платный прогноз"); i > 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	if m := regexp.MustCompile(`^(.+?)\s+\d{1,2}\s?[а-яё]{3,5}\.? \d{2}:\d{2}\b`).FindStringSubmatch(s); len(m) == 2 {
+		s = strings.TrimSpace(m[1]) // только шапка: "Теннис ITF. Хамамацу. Женщины"
+	}
+
+	// 2) спорт — первое слово (часто "Теннис", "Футбол", "Баскетбол", "Хоккей" и т.д.)
+	if mm := regexp.MustCompile(`^([A-Za-zА-Яа-яЁё]+)`).FindStringSubmatch(s); len(mm) == 2 {
+		sport = mm[1]
+	}
+
+	// 3) страна — явное упоминание или по городу/лиге из мини-словаря
+	// явные страны
+	for _, c := range []string{
+		"США", "Россия", "Испания", "Германия", "Италия", "Франция",
+		"Япония", "Китай", "Англия", "Великобритания", "Украина",
+		"Беларусь", "Казахстан", "Бразилия",
+	} {
+		if strings.Contains(s, c) {
+			country = c
+			break
+		}
+	}
+	// если не нашли — попробуем по городу/лигe
+	if country == "" {
+		lc := strings.ToLower(s)
+		switch {
+		case strings.Contains(lc, "хамамацу"), strings.Contains(lc, "hamamatsu"):
+			country = "Япония"
+		case strings.Contains(lc, "nba"):
+			country = "США"
+		case strings.Contains(lc, "khl"), strings.Contains(lc, "кхл"):
+			country = "Россия"
+			// дополняй по мере встреч
+		}
+	}
+
+	return strings.TrimSpace(sport), strings.TrimSpace(country)
 }
 
 // конвертация русских месяцев в число
