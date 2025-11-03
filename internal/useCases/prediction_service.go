@@ -32,52 +32,62 @@ func NewPredictionService(logger *slog.Logger) *PredictionService {
 	}
 }
 
-// FormatMessage форматирует прогноз в нужный вид
-func (p *PredictionService) FormatMessage(teams string, date string, forecast string) string {
+func (p *PredictionService) FormatBetMessage(teams, date, sport, league, outcome, coef string) string {
 	// 1) дата
-	parts := strings.Split(date, " ")
-	day := parts[0]
-	month := monthNum(parts[1])
-	timeStr := parts[len(parts)-1]
-	dateFormatted := fmt.Sprintf("%s.%s — %s", day, month, timeStr)
+	parts := strings.Fields(date)
+	day := ""
+	month := ""
+	timeStr := ""
 
-	// 2) попытка извлечь спорт/страну из forecast
-	sport, country := extractSportCountry(forecast)
+	if len(parts) >= 3 {
+		day = parts[0]
+		month = monthNum(parts[1]) // твоя функция: "ноября" -> "11"
+		timeStr = parts[len(parts)-1]
+	} else {
+		// фолбэк: вернём как есть
+		timeStr = date
+	}
 
-	// 3) исход
-	outcome := p.outcomeRe.FindString(forecast)
+	dateFormatted := timeStr
+	if day != "" && month != "" {
+		dateFormatted = fmt.Sprintf("%s.%s — %s", day, month, timeStr)
+	}
+
+	// 2) команды: нормализуем короткий дефис на длинное тире
+	teamsClean := strings.ReplaceAll(teams, " - ", " — ")
+	teamsClean = strings.ReplaceAll(teamsClean, "-", "—") // если без пробелов
+
+	// 3) исход и коэффициент
+	outcome = strings.TrimSpace(outcome)
 	if outcome == "" {
-		outcome = forecast
+		outcome = "—"
 	}
 
-	// 4) коэффициент: приоритет "~число"
-	coef := regexp.MustCompile(`~\s*\d+(\.\d+)?`).FindString(forecast)
-	if coef == "" {
-		coef = p.coefRe.FindString(forecast)
-	}
+	coef = strings.TrimSpace(coef)
 	if coef == "" {
 		coef = "?"
+	} else if !strings.HasPrefix(coef, "~") {
+		coef = "~" + coef
 	}
 
-	// 5) собираем вывод
 	var b strings.Builder
-	if sport != "" || country != "" {
-		// если нашли что-то — выводим первой строкой
-		if sport != "" && country != "" {
-			fmt.Fprintf(&b, "%s %s\n\n", sport, country)
-		} else if sport != "" {
-			fmt.Fprintf(&b, "%s\n\n", sport)
-		} else {
-			fmt.Fprintf(&b, "%s\n\n", country)
-		}
+
+	// 4) заголовок: спорт + лига (если есть)
+	if sport != "" {
+		fmt.Fprintln(&b, sport)
+	}
+	if league != "" {
+		fmt.Fprintln(&b, league)
+	}
+	if sport != "" || league != "" {
+		fmt.Fprintln(&b) // пустая строка
 	}
 
-	fmt.Fprintf(&b, "🕓 %s\n%s\n\n🎯 %s\n📈 Кф: %s",
-		dateFormatted,
-		teams,
-		strings.TrimSpace(outcome),
-		strings.TrimSpace(coef),
-	)
+	// 5) тело
+	fmt.Fprintf(&b, "🕓 %s\n%s\n\n", dateFormatted, teamsClean)
+	fmt.Fprintf(&b, "🎯 %s\n", outcome)
+	fmt.Fprintf(&b, "📈 Кф: %s", coef)
+
 	return b.String()
 }
 
@@ -140,52 +150,61 @@ func monthNum(m string) string {
 	return months[strings.ToLower(strings.TrimSpace(m))]
 }
 
-// GetForecast загружает страницу прогноза каппера и находит прогноз для заданного матча.
-func (p *PredictionService) GetForecast(capper, teams, _ /*dateIgnored*/, baseURL string) (string, error) {
-	// формируем URL
+// вернёт исход (например: "Ф2 (-1.00)") и коэффициент (например: "~5")
+func (p *PredictionService) GetOutcomeAndCoef(capper, teams, baseURL string) (outcome, coef string, err error) {
 	url := fmt.Sprintf("%s%s/bets?_pjax=%%23profile", baseURL, capper)
 
 	client := http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		return "", fmt.Errorf("не удалось загрузить страницу прогноза: %w", err)
+		return "", "", fmt.Errorf("не удалось загрузить страницу: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("получен неожиданный статус %d при загрузке %s", resp.StatusCode, url)
+		return "", "", fmt.Errorf("статус %d при загрузке %s", resp.StatusCode, url)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("ошибка парсинга HTML: %w", err)
+		return "", "", fmt.Errorf("ошибка парсинга HTML: %w", err)
 	}
 
 	teamA, teamB := splitTeams(teams)
-	var forecast string
 
-	// ищем первый блок, где присутствуют две команды
+	// исход: Ф1/Ф2(...), П1/П2, ТБ/ТМ(...), 1X/12/X2/ОЗ
+	outcomeRe := regexp.MustCompile(`(?i)\b(Ф[12]\s*\([^)]+\)|П[12]|Т[БМ]\s*\([^)]+\)|1X|12|X2|ОЗ)\b`)
+	// коэффициент: ~Число (поддержим и дробные с . или ,)
+	coefRe := regexp.MustCompile(`~\s*\d+(?:[.,]\d+)?`)
+
+	found := false
 	doc.Find(".UserBet").EachWithBreak(func(i int, bet *goquery.Selection) bool {
-		text := normSpaces(bet.Text())
-
-		// если блок не содержит обе команды — пропускаем
-		if !strings.Contains(text, teamA) || !strings.Contains(text, teamB) {
+		// Уточняем матч по колонке с командами
+		sides := normSpaces(bet.Find(".sides").Text())
+		if !(strings.Contains(sides, teamA) && strings.Contains(sides, teamB)) {
 			return true // continue
 		}
 
-		// вырезаем команды
-		text = strings.Replace(text, teamA, "", 1)
-		text = strings.Replace(text, teamB, "", 1)
+		// Берём весь текст блока — на мобиле исход/кф могут быть в других подпоколонках
+		text := normSpaces(bet.Text())
 
-		forecast = strings.TrimSpace(text)
-		return false // нашли — stop
+		outcome = strings.TrimSpace(outcomeRe.FindString(text))
+		coef = strings.TrimSpace(coefRe.FindString(text))
+
+		if outcome != "" || coef != "" {
+			found = true
+			return false // stop
+		}
+		return true
 	})
 
-	if forecast == "" {
-		return "", fmt.Errorf("прогноз для матча '%s' не найден на странице %s", teams, url)
+	if !found {
+		return "", "", fmt.Errorf("ставка для матча '%s' не найдена", teams)
 	}
-
-	return forecast, nil
+	if outcome == "" && coef == "" {
+		return "", "", fmt.Errorf("не удалось извлечь исход и коэффициент")
+	}
+	return outcome, coef, nil
 }
 
 // --- helpers ---
@@ -229,27 +248,40 @@ const newForecastMarker = "Новый прогноз - -"
 // КФ ~2, Ставка 400у.е.
 
 // Возвращает ошибку, если формат не совпадает или найден исход (ставка).
-func (p *PredictionService) ExtractCapperAndMatch(message string) (capper string, teams string, date string, err error) {
+func (p *PredictionService) ExtractCapperAndMatch(message string) (capper string, sport string, league string, teams string, date string, err error) {
 	// нормализуем переносы строк
 	msg := strings.ReplaceAll(message, "\r\n", "\n")
 	msg = strings.ReplaceAll(msg, "\r", "\n")
 
 	// обязательный маркер "Новый прогноз - -"
 	if !strings.Contains(msg, newForecastMarker) {
-		return "", "", "", errors.New("пропуск: отсутствует строка 'Новый прогноз - -'")
+		return "", "", "", "", "", errors.New("пропуск: отсутствует строка 'Новый прогноз - -'")
 	}
 
 	// исход (тип ставки) НЕ должен быть указан
 	if outcomeRe.FindStringIndex(msg) != nil {
-		return "", "", "", errors.New("пропуск: в сообщении найден исход (Ф/П/ТБ/ТМ/1X/12/X2/ОЗ)")
+		return "", "", "", "", "", errors.New("пропуск: в сообщении найден исход (Ф/П/ТБ/ТМ/1X/12/X2/ОЗ)")
 	}
 
 	sc := bufio.NewScanner(strings.NewReader(msg))
-	var capperFound, teamsFound, dateFound bool
+	var (
+		capperFound  bool
+		markerPassed bool
+		sportFound   bool
+		leagueFound  bool
+		teamsFound   bool
+		dateFound    bool
+	)
 
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
+			continue
+		}
+
+		// ловим сам маркер как отдельную строку
+		if !markerPassed && line == newForecastMarker {
+			markerPassed = true
 			continue
 		}
 
@@ -262,18 +294,29 @@ func (p *PredictionService) ExtractCapperAndMatch(message string) (capper string
 			}
 		}
 
-		// 2) команды (строка вида "Team A - Team B,")
+		// 2) сразу после маркера: спорт и лига
+		if markerPassed && !sportFound {
+			sport = line // например: "Футбол", "Теннис", "Баскетбол"
+			sportFound = true
+			continue
+		}
+		if markerPassed && sportFound && !leagueFound {
+			league = line // берём строку целиком, например: "Чемпионат Венесуэлы. Примера дивизион"
+			leagueFound = true
+			continue
+		}
+
+		// 3) команды (строка вида "Team A - Team B,")
 		if !teamsFound && p.teamsLineRe.MatchString(line) {
-			// убираем хвостовую запятую
 			teams = strings.TrimRight(line, ", ")
 			teamsFound = true
 			continue
 		}
 
-		// 3) дата/время из "Начало матча ..."
+		// 4) дата/время из "Начало матча ..."
 		if !dateFound {
 			if m := startLineRe.FindStringSubmatch(line); len(m) == 2 {
-				date = strings.TrimSpace(m[1]) // например: "02 ноября 23:30"
+				date = strings.TrimSpace(m[1]) // например: "05 ноября 02:30"
 				dateFound = true
 				continue
 			}
@@ -281,49 +324,53 @@ func (p *PredictionService) ExtractCapperAndMatch(message string) (capper string
 	}
 
 	if err := sc.Err(); err != nil {
-		return "", "", "", fmt.Errorf("ошибка сканирования: %w", err)
+		return "", "", "", "", "", fmt.Errorf("ошибка сканирования: %w", err)
 	}
 
+	// валидация
 	if !capperFound {
-		return "", "", "", errors.New("не удалось извлечь имя каппера")
+		return "", "", "", "", "", errors.New("не удалось извлечь имя каппера")
+	}
+	if !sportFound {
+		return "", "", "", "", "", errors.New("не удалось извлечь вид спорта")
+	}
+	if !leagueFound {
+		return "", "", "", "", "", errors.New("не удалось извлечь лигу/турнир")
 	}
 	if !teamsFound {
-		return "", "", "", errors.New("не удалось извлечь команды матча")
+		return "", "", "", "", "", errors.New("не удалось извлечь команды матча")
 	}
 	if !dateFound {
-		return "", "", "", errors.New("не удалось извлечь дату/время начала матча")
+		return "", "", "", "", "", errors.New("не удалось извлечь дату/время начала матча")
 	}
 
-	return capper, teams, date, nil
+	return capper, sport, league, teams, date, nil
 }
 
 func (p *PredictionService) GetFormatedPrediction(msg domain.Message, baseURL string) (string, string, error) {
-	// 1) Достаём capper / teams / date из текста входящего сообщения
+	// 1) Достаём capper / teams / sport / league/ date из текста входящего сообщения
 	if msg.Text == "" {
 		return "", "", errors.New("пустое сообщение")
 	}
-	capper, teams, date, err := p.ExtractCapperAndMatch(msg.Text)
+	capper, sport, league, teams, date, err := p.ExtractCapperAndMatch(msg.Text)
 	if err != nil {
 		p.logger.Error("extract capper/match failed", "err", err)
 		return "", "", err
 	}
 
-	// 2) Парсим сайт каппера и находим конкретный прогноз под этот матч/дату
-	forecast, err := p.GetForecast(capper, teams, date, strings.TrimRight(baseURL, "/")+"/")
+	// 2) Парсим сайт каппера и находим исход и кф
+	outcome, coef, err := p.GetOutcomeAndCoef(capper, teams, strings.TrimRight(baseURL, "/")+"/")
 	if err != nil {
 		p.logger.Error("fetch forecast failed", "capper", capper, "teams", teams, "date", date, "err", err)
 		return "", "", err
 	}
 
-	// 3) Нормализуем отображение команд (заменим дефис на тире, как в примере)
-	teamsDisplay := strings.ReplaceAll(teams, " - ", " — ")
-
 	// 4) Формируем финальный текст сообщения
-	formatted := p.FormatMessage(teamsDisplay, date, forecast)
+	formatted := p.FormatBetMessage(teams, date, sport, league, outcome, coef)
 
 	p.logger.Info("prediction formatted",
 		"capper", capper,
-		"teams", teamsDisplay,
+		"teams", teams,
 		"date", date,
 	)
 
