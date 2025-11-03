@@ -174,11 +174,6 @@ func (p *PredictionService) GetOutcomeAndCoef(capper, teams, baseURL string) (ou
 
 	teamA, teamB := splitTeams(teams)
 
-	// исход: Ф1/Ф2(...), П1/П2, ТБ/ТМ(...), 1X/12/X2/ОЗ
-	outcomeRe := regexp.MustCompile(`(?i)\b(Ф[12]\s*\([^)]+\)|П[12]|Т[БМ]\s*\([^)]+\)|1X|12|X2|ОЗ)\b`)
-	// коэффициент: ~Число (поддержим и дробные с . или ,)
-	coefRe := regexp.MustCompile(`~\s*\d+(?:[.,]\d+)?`)
-
 	found := false
 	doc.Find(".UserBet").EachWithBreak(func(i int, bet *goquery.Selection) bool {
 		// Уточняем матч по колонке с командами
@@ -190,8 +185,8 @@ func (p *PredictionService) GetOutcomeAndCoef(capper, teams, baseURL string) (ou
 		// Берём весь текст блока — на мобиле исход/кф могут быть в других подпоколонках
 		text := normSpaces(bet.Text())
 
-		outcome = strings.TrimSpace(outcomeRe.FindString(text))
-		coef = strings.TrimSpace(coefRe.FindString(text))
+		outcome = strings.TrimSpace(p.outcomeRe.FindString(text))
+		coef = strings.TrimSpace(p.coefRe.FindString(text))
 
 		if outcome != "" || coef != "" {
 			found = true
