@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/tdlib/build \
     cmake --build . --target install
 
 # 2) Сборка Go-приложения с динамической TDLib
-FROM golang:1.21 AS go-builder
+FROM golang:1.23 AS go-builder
 # Устанавливаем компилятор и dev-пакеты OpenSSL/zlib
 RUN apt-get update && apt-get install -y \
       gcc \
