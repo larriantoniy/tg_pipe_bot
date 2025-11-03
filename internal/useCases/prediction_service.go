@@ -33,32 +33,36 @@ func NewPredictionService(logger *slog.Logger) *PredictionService {
 }
 
 // FormatMessage форматирует прогноз в нужный вид
-func (p *PredictionService) FormatMessage(teams string, date string, forecast string) string {
+func (p *PredictionService) FormatMessage(sport string, country string, teams string, date string, forecast string) string {
 	// Пример даты: "02 ноября 23:30"
 	parts := strings.Split(date, " ")
-	// parts[0] = "02"
-	// parts[1] = "ноября"
-	// parts[2] = "23:30"
 
-	day := parts[0]                // 02
-	month := monthNum(parts[1])    // ноября → 11
-	timeStr := parts[len(parts)-1] // 23:30
+	day := parts[0]
+	month := monthNum(parts[1])
+	timeStr := parts[len(parts)-1]
 	dateFormatted := fmt.Sprintf("%s.%s — %s", day, month, timeStr)
 
-	// ищем исход
+	// исход
 	outcome := p.outcomeRe.FindString(forecast)
 	if outcome == "" {
-		outcome = forecast // fallback
+		outcome = forecast
 	}
 
-	// ищем коэффициент
-	coef := p.coefRe.FindString(forecast)
+	// коэффициент: сначала ищем `~число`, затем обычное
+	coef := regexp.MustCompile(`~\s*\d+(\.\d+)?`).FindString(forecast)
 	if coef == "" {
-		coef = "?" // fallback
+		coef = p.coefRe.FindString(forecast)
 	}
+	if coef == "" {
+		coef = "?"
+	}
+
+	// просто используем входные sport и country как есть
+	sportLine := fmt.Sprintf("%s %s", sport, country)
 
 	return fmt.Sprintf(
-		"🕓 %s\n%s\n\n🎯 %s\n📈 Кф: %s",
+		"%s\n\n🕓 %s\n%s\n\n🎯 %s\n📈 Кф: %s",
+		sportLine,
 		dateFormatted,
 		teams,
 		strings.TrimSpace(outcome),
