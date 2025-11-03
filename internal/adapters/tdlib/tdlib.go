@@ -106,44 +106,31 @@ func (t *TDLibClient) Listen() (<-chan domain.Message, error) {
 func (t *TDLibClient) GetAdminChannels() (map[string]string, error) {
 	result := make(map[string]string)
 
-	// Загружаем список чатов
-	chats, err := t.client.GetChats(&client.GetChatsRequest{
-		Limit: 500,
-	})
+	chats, err := t.client.GetChats(&client.GetChatsRequest{Limit: 500})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get chats: %w", err)
 	}
 
+	const prefix = "Слив каппера "
 	for _, chatID := range chats.ChatIds {
 		chat, err := t.client.GetChat(&client.GetChatRequest{ChatId: chatID})
 		if err != nil {
 			continue
 		}
 
-		// Интересуют только супергруппы/каналы
 		sgType, ok := chat.Type.(*client.ChatTypeSupergroup)
 		if !ok {
 			continue
 		}
 
-		sg, err := t.client.GetSupergroup(&client.GetSupergroupRequest{
-			SupergroupId: sgType.SupergroupId,
-		})
-		if err != nil {
+		sg, err := t.client.GetSupergroup(&client.GetSupergroupRequest{SupergroupId: sgType.SupergroupId})
+		if err != nil || !sg.IsChannel {
 			continue
 		}
 
-		// Только каналы (а не чаты-супергруппы)
-		if !sg.IsChannel {
-			continue
-		}
-
-		// Проверяем, что мы админ
 		member, err := t.client.GetChatMember(&client.GetChatMemberRequest{
-			ChatId: chat.Id,
-			MemberId: &client.MessageSenderUser{
-				UserId: t.selfId,
-			},
+			ChatId:   chat.Id,
+			MemberId: &client.MessageSenderUser{UserId: t.selfId},
 		})
 		if err != nil {
 			continue
@@ -151,28 +138,19 @@ func (t *TDLibClient) GetAdminChannels() (map[string]string, error) {
 
 		switch member.Status.(type) {
 		case *client.ChatMemberStatusAdministrator, *client.ChatMemberStatusCreator:
-			// ищем название "Слив каппера <Name>"
 			title := strings.TrimSpace(chat.Title)
-			const prefix = "Слив каппера "
-
 			if !strings.HasPrefix(strings.ToLower(title), strings.ToLower(prefix)) {
 				continue
 			}
-
-			// извлекаем имя каппера без запятых/пробелов
 			capperName := strings.TrimSpace(title[len(prefix):])
-			capperName = strings.TrimRight(capperName, ", ")
-
-			if capperName == "" {
-				continue
+			// убираем хвостовые знаки и нормализуем регистр
+			capperName = strings.TrimRight(capperName, ",.;: \t")
+			key := normalizeCapper(capperName)
+			if key != "" {
+				result[key] = fmt.Sprintf("%d", chat.Id)
 			}
-
-			// сохраняем: ключ = имя каппера, значение = chatId
-			result[capperName] = fmt.Sprintf("%d", chat.Id)
 		}
-
 	}
-
 	return result, nil
 }
 
