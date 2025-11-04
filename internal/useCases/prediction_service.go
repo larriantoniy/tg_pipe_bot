@@ -106,15 +106,18 @@ func (p *PredictionService) GetOutcomeOnly(capper, teams, baseURL string) (strin
 		return "", fmt.Errorf("не удалось разделить команды: '%s'", teams)
 	}
 
+	// ВАЖНО: нормализуем так же, как sides
+	nTA := normSpaces(tA)                         // tolower + схлопывание пробелов + замена тире + trim
+	nTB := strings.TrimRight(normSpaces(tB), ",") // убираем хвостовую запятую на всякий случай
+
 	var outcome string
 	found := false
 
 	doc.Find(".UserBet").EachWithBreak(func(i int, bet *goquery.Selection) bool {
-		sides := normSpaces(bet.Find(".sides").Text())
-		sides = strings.ReplaceAll(sides, "—", "-")
-		sides = strings.ReplaceAll(sides, "–", "-")
+		sides := normSpaces(bet.Find(".sides").Text()) // уже в нижнем регистре
 
-		if !(strings.Contains(sides, tA) && strings.Contains(sides, tB)) {
+		// Проверяем на вхождение нормализованных команд
+		if !(strings.Contains(sides, nTA) && strings.Contains(sides, nTB)) {
 			return true // continue
 		}
 
@@ -248,6 +251,7 @@ func (p *PredictionService) GetFormatedPrediction(msg domain.Message, baseURL st
 		p.logger.Error("extract capper/match failed", "err", err)
 		return "", "", err
 	}
+	p.logger.Warn("GetFormatedPrediction AFTER ExtractCapperAndMatch", "capper", capper, " sport", sport, "league", league, "teams", teams, "date", date, "coef", coef)
 
 	// 2) Парсим сайт каппера и находим исход и кф
 	outcome, err := p.GetOutcomeOnly(capper, teams, strings.TrimRight(baseURL, "/")+"/")
@@ -255,6 +259,7 @@ func (p *PredictionService) GetFormatedPrediction(msg domain.Message, baseURL st
 		p.logger.Error("fetch forecast failed", "capper", capper, "teams", teams, "date", date, "err", err)
 		return "", "", err
 	}
+	p.logger.Warn("GetFormatedPrediction AFTER GETOUTCOME ONLY", "outcome", outcome)
 
 	// 4) Формируем финальный текст сообщения
 	formatted := p.FormatBetMessage(teams, date, sport, league, outcome, coef)
