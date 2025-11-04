@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"os"
 	"strconv"
 	"time"
@@ -18,6 +19,7 @@ const (
 )
 
 func main() {
+
 	cfg, err := config.Load()
 	if err != nil {
 		// либо log.Fatalf, либо panic с читаемым сообщением
@@ -45,18 +47,16 @@ func main() {
 		}
 
 		for msg := range updates {
-			logger.Info("New message", "chat_id", msg.ChatID, "text", msg.Text)
+			rand.Seed(time.Now().UnixNano())
+			dur := randDuration(10, 50)
+			time.Sleep(dur)
+			logger.Info("New message", "chat_id", msg.ChatID, "text", msg.Text, "duration", dur)
 			capper, formatted, err := ps.GetFormatedPrediction(msg, cfg.BasePredictUrl)
 			if err != nil {
 				logger.Error("GetFormattedPrediction", "chat_id", msg.ChatID, "text", msg.Text, "error", err)
 				continue
 			}
-			logger.Warn("After format", "capper", capper, "formatted", formatted)
-			slog.Warn("adminChans",
-				"map", adminChans,
-				"capper", capper,
-				"chatId", adminChans[capper],
-			)
+
 			chatIdStr, ok := adminChans[capper]
 			if !ok || chatIdStr == "" {
 				logger.Error("No target channel for capper", "capper", capper)
@@ -75,6 +75,15 @@ func main() {
 		}
 		logger.Warn("Listen exited — вероятно упало соединение, пробуем снова...")
 	}
+}
+func randDuration(minSec, maxSec int) time.Duration {
+	if maxSec <= minSec {
+		return time.Duration(minSec) * time.Second
+	}
+	sec := rand.Intn(maxSec-minSec+1) + minSec
+	// добавим миллисекундный джиттер 0..999ms чтобы интервалы выглядили менее ровными
+	ms := rand.Intn(1000)
+	return time.Duration(sec)*time.Second + time.Duration(ms)*time.Millisecond
 }
 
 func setupLogger(env string) *slog.Logger {
