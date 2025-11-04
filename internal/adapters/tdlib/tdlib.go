@@ -113,7 +113,7 @@ func (t *TDLibClient) Listen() (<-chan domain.Message, error) {
 	go func() {
 		defer close(out)
 		for update := range listener.Updates {
-			t.logger.Debug("Received new message")
+
 			if upd, ok := update.(*client.UpdateNewMessage); ok {
 				_, err := t.ProcessUpdateNewMessage(out, upd)
 				if err != nil {
@@ -167,13 +167,6 @@ func (t *TDLibClient) GetAdminChannelsSimple() (map[string]string, error) {
 	return res, nil
 }
 
-func normalizeCapper(s string) string {
-	s = strings.TrimSpace(s)
-	s = strings.ToLower(s)
-	s = strings.ReplaceAll(s, "ё", "е")
-	return s
-}
-
 func (t *TDLibClient) getChatTitle(chatID int64) (string, error) {
 	chat, err := t.client.GetChat(&client.GetChatRequest{
 		ChatId: chatID,
@@ -201,6 +194,7 @@ func (t *TDLibClient) ProcessUpdateNewMessage(out chan domain.Message, upd *clie
 }
 
 func (t *TDLibClient) processMessageText(out chan domain.Message, msg *client.MessageText, msgChatId int64, ChatName string) (<-chan domain.Message, error) {
+	t.logger.Debug("Received new message text", msg.Text.Text)
 	out <- domain.Message{
 		ChatID:   msgChatId,
 		Text:     msg.Text.Text,
