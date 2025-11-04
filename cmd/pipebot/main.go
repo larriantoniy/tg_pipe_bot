@@ -29,7 +29,7 @@ func main() {
 	logger := setupLogger(cfg.Env)
 	ps := prediction.NewPredictionService(logger)
 
-	tdClient, err := tdlib.NewClient(cfg.APIID, cfg.APIHash, logger)
+	tdClient, err := tdlib.NewClient(logger, cfg)
 	if err != nil {
 		logger.Error("TDLib init failed", "error", err)
 		os.Exit(1)

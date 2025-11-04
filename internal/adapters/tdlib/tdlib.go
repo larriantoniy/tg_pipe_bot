@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/larriantoniy/tg_pipe_bot/internal/config"
 	"github.com/larriantoniy/tg_pipe_bot/internal/domain"
 	"github.com/larriantoniy/tg_pipe_bot/internal/ports"
 	"github.com/zelenin/go-tdlib/client"
@@ -18,11 +19,11 @@ type TDLibClient struct {
 }
 
 // NewClient создаёт и авторизует TDLib клиента
-func NewClient(apiID int32, apiHash string, logger *slog.Logger) (ports.TelegramClient, error) {
+func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, error) {
 	// Параметры TDLib
 	tdParams := &client.SetTdlibParametersRequest{
-		ApiId:              apiID,
-		ApiHash:            apiHash,
+		ApiId:              cfg.APIID,
+		ApiHash:            cfg.APIHash,
 		SystemLanguageCode: "en",
 		DeviceModel:        "GoUserBot",
 		ApplicationVersion: "0.1",
@@ -46,6 +47,27 @@ func NewClient(apiID int32, apiHash string, logger *slog.Logger) (ports.Telegram
 		logger.Error("TDLib NewClient error", "error", err)
 		return nil, err
 	}
+
+	// === ДОБАВЛЯЕМ SOCKS5 ПРОКСИ ===
+
+	p, err := tdClient.AddProxy(&client.AddProxyRequest{
+		Server: cfg.ProxyUrl,
+		Port:   cfg.ProxyPort,
+		Enable: true, // сразу включить
+		Type: &client.ProxyTypeSocks5{
+			Username: cfg.ProxyUser,
+			Password: cfg.ProxyPassword,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = tdClient.EnableProxy(&client.EnableProxyRequest{ProxyId: p.Id})
+	if err != nil {
+		return nil, err
+	}
+	// === ПРОКСИ ВКЛЮЧЕН ===
 	// Получаем информацию о себе (боте) — понадобится для GetChatMember
 	me, err := tdClient.GetMe()
 	if err != nil {

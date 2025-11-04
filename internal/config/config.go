@@ -13,9 +13,18 @@ import (
 type Config struct {
 	APIID          int32
 	APIHash        string
+	ProxyUrl       string
+	ProxyPort      int32
+	ProxyUser      string
+	ProxyPassword  string
 	BasePredictCh  string
 	BasePredictUrl string
 	Env            string `yaml:"env" env-required:"true"`
+}
+
+func toInt32(s string) int32 {
+	v, _ := strconv.ParseInt(s, 10, 32)
+	return int32(v)
 }
 
 // Load читает настройки из переменных окружения
@@ -26,9 +35,13 @@ func Load() (*Config, error) {
 	apiHash := os.Getenv("TELEGRAM_API_HASH")
 	basePredictCh := os.Getenv("BASE_PREDICT_CH")
 	basePredictUrl := os.Getenv("BASE_PREDICTION_URL")
+	proxyUrl := os.Getenv("PROXY_URL")
+	proxyPassword := os.Getenv("PROXY_PASSWORD")
+	proxyUser := os.Getenv("PROXY_USER")
+	proxyPort := os.Getenv("PROXY_PORT")
 
-	if apiIDStr == "" || apiHash == "" || basePredictUrl == "" || basePredictCh == "" {
-		return nil, fmt.Errorf("TELEGRAM_API_ID, TELEGRAM_API_HASH , BASE_PREDICT_CH , BASE_PREDICTION_URL должны быть заданы")
+	if apiIDStr == "" || apiHash == "" || proxyUrl == "" || proxyPort == "" || proxyUser == "" || proxyPassword == "" {
+		return nil, fmt.Errorf("TELEGRAM_API_ID, TELEGRAM_API_HASH , PROXY_URL , PROXY_PORT , PROXY_USER ,PROXY_PASSWORD должны быть заданы")
 	}
 
 	apiID, err := strconv.Atoi(apiIDStr)
@@ -43,6 +56,10 @@ func Load() (*Config, error) {
 		Env:            cfg.Env, // <— добавили
 		BasePredictUrl: basePredictUrl,
 		BasePredictCh:  basePredictCh,
+		ProxyUrl:       proxyUrl,
+		ProxyPort:      toInt32(proxyPort),
+		ProxyUser:      proxyUser,
+		ProxyPassword:  proxyPassword,
 	}, nil
 }
 
