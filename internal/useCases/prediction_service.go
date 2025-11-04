@@ -83,7 +83,7 @@ func (p *PredictionService) FormatBetMessage(
 }
 
 func (p *PredictionService) GetOutcomeOnly(capper, teams, baseURL string) (string, error) {
-	url := fmt.Sprintf("%s%s/bets?_pjax=%%23profile", baseURL, capper)
+	url := fmt.Sprintf("%s%s/bets?_pjax=%%23profile", strings.TrimRight(baseURL, "/")+"/", capper)
 
 	client := http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
@@ -101,56 +101,73 @@ func (p *PredictionService) GetOutcomeOnly(capper, teams, baseURL string) (strin
 		return "", fmt.Errorf("ошибка парсинга HTML: %w", err)
 	}
 
-	tA, tB := splitTeams(teams)
+	// нормализуем входные команды
+	tA, tB := splitTeams(strings.TrimRight(teams, ","))
 	if tA == "" || tB == "" {
 		return "", fmt.Errorf("не удалось разделить команды: '%s'", teams)
 	}
-
-	// ВАЖНО: нормализуем так же, как sides
-	nTA := normSpaces(tA)                         // tolower + схлопывание пробелов + замена тире + trim
-	nTB := strings.TrimRight(normSpaces(tB), ",") // убираем хвостовую запятую на всякий случай
+	nTA, nTB := normalizeName(tA), normalizeName(tB)
 
 	var outcome string
-	found := false
+	foundMatch := false
 
 	doc.Find(".UserBet").EachWithBreak(func(i int, bet *goquery.Selection) bool {
-		sides := normSpaces(bet.Find(".sides").Text()) // уже в нижнем регистре
-
-		// Проверяем на вхождение нормализованных команд
-		if !(strings.Contains(sides, nTA) && strings.Contains(sides, nTB)) {
+		// 1) совпадение по командам (в любом порядке)
+		sidesNorm := normalizeName(bet.Find(".sides").Text())
+		ok := (strings.Contains(sidesNorm, nTA) && strings.Contains(sidesNorm, nTB)) ||
+			(strings.Contains(sidesNorm, nTB) && strings.Contains(sidesNorm, nTA))
+		if !ok {
 			return true // continue
 		}
+		foundMatch = true
 
-		text := normSpaces(bet.Text())
-		outcome = strings.TrimSpace(p.outcomeRe.FindString(text))
+		// 2) первичный источник: мобильный узел исхода
+		primary := strings.TrimSpace(bet.Find(".exspres .col-6.d-block.d-md-none.order-1").First().Text())
+		primary = strings.Join(strings.Fields(primary), " ")
+		if primary != "" && p.outcomeRe.MatchString(primary) {
+			outcome = strings.TrimSpace(p.outcomeRe.FindString(primary))
+			return false // stop — нашли
+		}
 
-		found = true
-		return false // stop
+		// 3) фолбэк: весь мобильный блок .exspres
+		exText := strings.Join(strings.Fields(bet.Find(".exspres").Text()), " ")
+		if exText != "" && p.outcomeRe.MatchString(exText) {
+			outcome = strings.TrimSpace(p.outcomeRe.FindString(exText))
+			return false
+		}
+
+		// 4) крайний фолбэк: весь блок карточки
+		all := strings.Join(strings.Fields(bet.Text()), " ")
+		if p.outcomeRe.MatchString(all) {
+			outcome = strings.TrimSpace(p.outcomeRe.FindString(all))
+		}
+		return false // это наш матч в любом случае
 	})
 
-	if !found {
+	if !foundMatch {
 		return "", fmt.Errorf("ставка для матча '%s' не найдена", teams)
 	}
-
+	if outcome == "" {
+		return "", fmt.Errorf("исход не найден для матча '%s'", teams)
+	}
 	return outcome, nil
 }
 
 // --- helpers ---
 
-func normSpaces(s string) string {
+func normalizeName(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.TrimRight(s, ",")
+	s = strings.ReplaceAll(s, "\u00A0", " ")
 	s = strings.ReplaceAll(s, "—", "-")
 	s = strings.ReplaceAll(s, "–", "-")
 	s = strings.ReplaceAll(s, "−", "-")
 	s = strings.ReplaceAll(s, " - ", "-")
-	s = strings.ReplaceAll(s, "\u00A0", " ")
 	s = strings.Join(strings.Fields(s), " ")
 	return strings.ToLower(s)
 }
 
 func splitTeams(teams string) (string, string) {
-	// унифицируем тире перед split
 	t := strings.ReplaceAll(teams, "—", "-")
 	t = strings.ReplaceAll(t, "–", "-")
 	t = strings.ReplaceAll(t, "−", "-")
