@@ -182,29 +182,34 @@ func (p *PredictionService) GetOutcomeAndCoef(capper, teams, baseURL string) (ou
 		return "", "", fmt.Errorf("ошибка парсинга HTML: %w", err)
 	}
 
-	teamA, teamB := splitTeams(teams)
-
 	var found bool
 	doc.Find(".UserBet").EachWithBreak(func(i int, bet *goquery.Selection) bool {
-		// 1) Проверяем, что это нужный матч
+		// Берём текст команд из DOM
 		sides := normSpaces(bet.Find(".sides").Text())
-		if !(strings.Contains(sides, teamA) && strings.Contains(sides, teamB)) {
-			return true // continue
+
+		// унифицируем тире
+		sides = strings.ReplaceAll(sides, "—", "-")
+		sides = strings.ReplaceAll(sides, "–", "-")
+
+		tA, tB := splitTeams(teams)
+		if tA == "" || tB == "" {
+			err = fmt.Errorf("не удалось разделить команды: '%s'", teams)
+			return false // stop
 		}
 
-		// 2) Берём полный текст блока — на мобилке куски могут быть в разных колонках
+		// проверяем, что обе команды есть в DOM-блоке
+		if !(strings.Contains(sides, tA) && strings.Contains(sides, tB)) {
+			return true // continue — не наш матч
+		}
+
+		// ✅ Нашли нужный блок — вытаскиваем исход и кф
 		text := normSpaces(bet.Text())
 
-		// 3) Ищем исход и кф
 		outcome = strings.TrimSpace(p.outcomeRe.FindString(text))
 		coef = strings.TrimSpace(p.coefRe.FindString(text))
 
-		// «~» оставляем как есть (теперь coefRe всегда его включает)
-		if outcome != "" || coef != "" {
-			found = true
-			return false // stop
-		}
-		return true
+		found = true
+		return false // stop
 	})
 
 	if !found {
@@ -225,15 +230,24 @@ func normSpaces(s string) string {
 }
 
 func splitTeams(teams string) (string, string) {
-	parts := strings.Split(teams, " - ")
-	if len(parts) == 2 {
-		return parts[0], parts[1]
-	}
-	parts = strings.Split(teams, "-")
+	s := strings.TrimSpace(teams)
+	s = strings.TrimRight(s, ",.;")
+
+	// унифицируем все виды тире в " - "
+	s = strings.ReplaceAll(s, " — ", " - ")
+	s = strings.ReplaceAll(s, " – ", " - ")
+	s = strings.ReplaceAll(s, "—", "-")
+	s = strings.ReplaceAll(s, "–", "-")
+
+	parts := strings.Split(s, " - ")
 	if len(parts) == 2 {
 		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 	}
-	return teams, ""
+	parts = strings.Split(s, "-")
+	if len(parts) == 2 {
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	}
+	return s, ""
 }
 
 // Маркер строго нужного типа сообщения
