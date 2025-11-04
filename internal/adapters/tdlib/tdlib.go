@@ -194,7 +194,7 @@ func (t *TDLibClient) ProcessUpdateNewMessage(out chan domain.Message, upd *clie
 }
 
 func (t *TDLibClient) processMessageText(out chan domain.Message, msg *client.MessageText, msgChatId int64, ChatName string) (<-chan domain.Message, error) {
-	t.logger.Debug("Received new message text", msg.Text.Text)
+	t.logger.Debug("Received new message", "text", msg.Text.Text)
 	out <- domain.Message{
 		ChatID:   msgChatId,
 		Text:     msg.Text.Text,
