@@ -135,30 +135,29 @@ func (p *PredictionService) GetOutcomeOnly(capper, teams, baseURL string) (strin
 // --- helpers ---
 
 func normSpaces(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimRight(s, ",")
+	s = strings.ReplaceAll(s, "—", "-")
+	s = strings.ReplaceAll(s, "–", "-")
+	s = strings.ReplaceAll(s, "−", "-")
+	s = strings.ReplaceAll(s, " - ", "-")
 	s = strings.ReplaceAll(s, "\u00A0", " ")
 	s = strings.Join(strings.Fields(s), " ")
-	return s
+	return strings.ToLower(s)
 }
 
 func splitTeams(teams string) (string, string) {
-	s := strings.TrimSpace(teams)
-	s = strings.TrimRight(s, ",.;")
-
-	// унифицируем все виды тире в " - "
-	s = strings.ReplaceAll(s, " — ", " - ")
-	s = strings.ReplaceAll(s, " – ", " - ")
-	s = strings.ReplaceAll(s, "—", "-")
-	s = strings.ReplaceAll(s, "–", "-")
-
-	parts := strings.Split(s, " - ")
-	if len(parts) == 2 {
-		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	// унифицируем тире перед split
+	t := strings.ReplaceAll(teams, "—", "-")
+	t = strings.ReplaceAll(t, "–", "-")
+	t = strings.ReplaceAll(t, "−", "-")
+	parts := strings.Split(t, "-")
+	if len(parts) >= 2 {
+		a := strings.TrimSpace(parts[0])
+		b := strings.TrimSpace(strings.Join(parts[1:], "-"))
+		return a, b
 	}
-	parts = strings.Split(s, "-")
-	if len(parts) == 2 {
-		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-	}
-	return s, ""
+	return strings.TrimSpace(teams), ""
 }
 
 // ExtractCapperAndMatch парсит ТОЛЬКО сообщения строго заданного формата.
