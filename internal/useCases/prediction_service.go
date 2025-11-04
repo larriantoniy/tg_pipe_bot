@@ -73,10 +73,7 @@ func (p *PredictionService) FormatBetMessage(
 	if coef == "" {
 		coef = "?"
 	}
-	// если коэффициент без "~" — добавляем
-	if !strings.HasPrefix(coef, "~") {
-		coef = "~" + coef
-	}
+
 	fmt.Fprintf(&b, "📈 Кф: %s", coef)
 
 	return b.String()
@@ -101,56 +98,83 @@ func (p *PredictionService) GetOutcomeOnly(capper, teams, baseURL string) (strin
 		return "", fmt.Errorf("ошибка парсинга HTML: %w", err)
 	}
 
-	// нормализуем входные команды
-	tA, tB := splitTeams(strings.TrimRight(teams, ","))
-	if tA == "" || tB == "" {
-		return "", fmt.Errorf("не удалось разделить команды: '%s'", teams)
+	// Подготовим искомые команды
+	a, b := splitTeams(teams)
+	if a == "" || b == "" {
+		return "", fmt.Errorf("не удалось разделить команды: %q", teams)
 	}
-	nTA, nTB := normalizeName(tA), normalizeName(tB)
+	na, nb := normalizeName(a), normalizeName(b)
 
-	var outcome string
-	foundMatch := false
+	var (
+		outcome string
+		found   bool
+	)
 
 	doc.Find(".UserBet").EachWithBreak(func(i int, bet *goquery.Selection) bool {
-		// 1) совпадение по командам (в любом порядке)
-		sidesNorm := normalizeName(bet.Find(".sides").Text())
-		ok := (strings.Contains(sidesNorm, nTA) && strings.Contains(sidesNorm, nTB)) ||
-			(strings.Contains(sidesNorm, nTB) && strings.Contains(sidesNorm, nTA))
-		if !ok {
+		// Собираем названия команд из .sides span
+		var left, right []string
+		bet.Find(".sides span").Each(func(i int, s *goquery.Selection) {
+			txt := strings.TrimSpace(s.Text())
+			if txt != "" {
+				if len(left) == 0 {
+					left = append(left, txt)
+				} else {
+					right = append(right, txt)
+				}
+			}
+		})
+		team1 := strings.Join(left, " ")
+		team2 := strings.Join(right, " ")
+
+		// Нормализуем
+		nsides1 := normalizeName(team1)
+		nsides2 := normalizeName(team2)
+
+		// Совпадение: обе искомые команды присутствуют (порядок неважен)
+		match := (strings.Contains(nsides1, na) && strings.Contains(nsides2, nb)) ||
+			(strings.Contains(nsides1, nb) && strings.Contains(nsides2, na))
+		if !match {
 			return true // continue
 		}
-		foundMatch = true
 
-		// 2) первичный источник: мобильный узел исхода
-		primary := strings.TrimSpace(bet.Find(".exspres .col-6.d-block.d-md-none.order-1").First().Text())
-		primary = strings.Join(strings.Fields(primary), " ")
-		if primary != "" && p.outcomeRe.MatchString(primary) {
-			outcome = strings.TrimSpace(p.outcomeRe.FindString(primary))
-			return false // stop — нашли
+		// 1) приоритет — mobile-ячейка исхода
+		if m := strings.TrimSpace(bet.Find(".exspres .col-6.d-block.d-md-none.order-1").First().Text()); m != "" {
+			outcome = strings.TrimSpace(p.outcomeRe.FindString(normSpaces(m)))
 		}
 
-		// 3) фолбэк: весь мобильный блок .exspres
-		exText := strings.Join(strings.Fields(bet.Find(".exspres").Text()), " ")
-		if exText != "" && p.outcomeRe.MatchString(exText) {
-			outcome = strings.TrimSpace(p.outcomeRe.FindString(exText))
-			return false
+		// 2) фолбэк — ищем в .exspres целиком
+		if outcome == "" {
+			block := normSpaces(bet.Find(".exspres").Text())
+			outcome = strings.TrimSpace(p.outcomeRe.FindString(block))
 		}
 
-		// 4) крайний фолбэк: весь блок карточки
-		all := strings.Join(strings.Fields(bet.Text()), " ")
-		if p.outcomeRe.MatchString(all) {
+		// 3) крайний фолбэк — по всей карточке
+		if outcome == "" {
+			all := normSpaces(bet.Text())
 			outcome = strings.TrimSpace(p.outcomeRe.FindString(all))
 		}
-		return false // это наш матч в любом случае
+
+		found = true
+		return false // stop
 	})
 
-	if !foundMatch {
-		return "", fmt.Errorf("ставка для матча '%s' не найдена", teams)
+	if !found {
+		return "", fmt.Errorf("ставка для матча %q не найдена", teams)
 	}
 	if outcome == "" {
-		return "", fmt.Errorf("исход не найден для матча '%s'", teams)
+		return "", fmt.Errorf("исход не найден для матча %q", teams)
 	}
 	return outcome, nil
+}
+func normSpaces(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimRight(s, ",")
+	s = strings.ReplaceAll(s, "—", "-")
+	s = strings.ReplaceAll(s, "–", "-")
+	s = strings.ReplaceAll(s, "−", "-")
+	s = strings.ReplaceAll(s, "\u00A0", " ")
+	s = strings.Join(strings.Fields(s), " ")
+	return strings.ToLower(s)
 }
 
 // --- helpers ---
