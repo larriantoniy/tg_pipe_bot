@@ -65,6 +65,7 @@ func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, e
 
 	_, err = tdClient.EnableProxy(&client.EnableProxyRequest{ProxyId: p.Id})
 	if err != nil {
+		logger.Error("TDLib EnableProxy error", "error", err)
 		return nil, err
 	}
 	// === ПРОКСИ ВКЛЮЧЕН ===
