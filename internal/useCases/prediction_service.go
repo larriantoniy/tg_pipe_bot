@@ -269,7 +269,14 @@ func (p *PredictionService) GetFormatedPrediction(msg domain.Message, baseURL st
 	p.logger.Warn("GetFormatedPrediction AFTER GETOUTCOME ONLY", "outcome", outcome)
 
 	// 4) Формируем финальный текст сообщения
-	formatted := p.FormatBetMessage(teams, date, sport, league, outcome, coef)
+	formatted := p.FormatBetMessage(
+		sport,
+		league,
+		date,
+		teams,
+		outcome,
+		coef,
+	)
 
 	return capper, formatted, nil
 }
