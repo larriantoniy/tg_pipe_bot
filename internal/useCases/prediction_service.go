@@ -24,18 +24,8 @@ type PredictionService struct {
 
 func NewPredictionService(logger *slog.Logger) *PredictionService {
 	return &PredictionService{
-		logger: logger,
-
-		// ловим: ТБ/ТМ 2.5 (со/без скобок), Ф1/Ф2 -1.5 (со/без скобок), П1/П2, X, 1X, 12, X2, ОЗ
-		outcomeRe: regexp.MustCompile(`(?i)\b(
-			Т[БМ]\s*\(?\s*\d+(?:[.,]\d+)?\s*\)? |
-			Ф[12]\s*\(?\s*[-+]?\d+(?:[.,]\d+)?\s*\)? |
-			П[12] |
-			1X | 12 | X2 | ОЗ | X
-		)\b`),
-
-		coefRe: regexp.MustCompile(`~?\s*\d+(?:[.,]\d+)?`),
-
+		logger:       logger,
+		coefRe:       regexp.MustCompile(`~?\s*\d+(?:[.,]\d+)?`),
 		capperLineRe: regexp.MustCompile(`^Каппер\s*-\s*([^\s,]+)(?:\s+добавил)?[,;]?\s*$`),
 		teamsLineRe:  regexp.MustCompile(`^\s*.+\s-\s.+,\s*$`),
 		startLineRe:  regexp.MustCompile(`(?i)^Начало\s+матча\s+(.+)$`),
@@ -138,22 +128,8 @@ func (p *PredictionService) GetOutcomeOnly(capper, teams, baseURL string) (strin
 		}
 
 		// 1) приоритет — mobile-ячейка исхода
-		if m := strings.TrimSpace(bet.Find(".exspres .col-6.d-block.d-md-none.order-1").First().Text()); m != "" {
-			outcome = strings.TrimSpace(p.outcomeRe.FindString(normSpaces(m)))
-		}
-
-		// 2) фолбэк — ищем в .exspres целиком
-		if outcome == "" {
-			block := normSpaces(bet.Find(".exspres").Text())
-			outcome = strings.TrimSpace(p.outcomeRe.FindString(block))
-		}
-
-		// 3) крайний фолбэк — по всей карточке
-		if outcome == "" {
-			all := normSpaces(bet.Text())
-			outcome = strings.TrimSpace(p.outcomeRe.FindString(all))
-		}
-
+		rawOutcome := bet.Find(".exspres .col-6.d-block.d-md-none.order-1").First().Text()
+		outcome = strings.TrimSpace(strings.Join(strings.Fields(rawOutcome), " "))
 		found = true
 		return false // stop
 	})
@@ -165,16 +141,6 @@ func (p *PredictionService) GetOutcomeOnly(capper, teams, baseURL string) (strin
 		return "", fmt.Errorf("исход не найден для матча %q", teams)
 	}
 	return outcome, nil
-}
-func normSpaces(s string) string {
-	s = strings.TrimSpace(s)
-	s = strings.TrimRight(s, ",")
-	s = strings.ReplaceAll(s, "—", "-")
-	s = strings.ReplaceAll(s, "–", "-")
-	s = strings.ReplaceAll(s, "−", "-")
-	s = strings.ReplaceAll(s, "\u00A0", " ")
-	s = strings.Join(strings.Fields(s), " ")
-	return strings.ToLower(s)
 }
 
 // --- helpers ---
