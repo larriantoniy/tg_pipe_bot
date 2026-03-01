@@ -20,7 +20,6 @@ type TDLibClient struct {
 
 // NewClient создаёт и авторизует TDLib клиента
 func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, error) {
-	// Параметры TDLib
 	tdParams := &client.SetTdlibParametersRequest{
 		ApiId:              cfg.APIID,
 		ApiHash:            cfg.APIHash,
@@ -32,63 +31,68 @@ func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, e
 		DatabaseDirectory:  "./tdlib-db",
 		FilesDirectory:     "./tdlib-files",
 	}
-	if _, err := client.SetLogVerbosityLevel(&client.SetLogVerbosityLevelRequest{
-		NewVerbosityLevel: 1,
-	}); err != nil {
-		logger.Error("TDLib SetLogVerbosity level", "error", err)
-	}
-	// Авторизатор и CLI-интерактор
-	authorizer := client.ClientAuthorizer(tdParams)
-	go client.CliInteractor(authorizer)
 
-	// Создаём клиента
+	// 1️⃣ Создаём authorizer (но не запускаем CLI!)
+	authorizer := client.ClientAuthorizer(tdParams)
+
+	// 2️⃣ Создаём TDLib client
 	tdClient, err := client.NewClient(authorizer)
 	if err != nil {
 		logger.Error("TDLib NewClient error", "error", err)
 		return nil, err
 	}
 
-	logger.Info("Authorization successful")
+	// 3️⃣ ДО авторизации добавляем прокси
+	server := strings.TrimSpace(cfg.ProxyUrl)
+	if server == "" {
+		return nil, fmt.Errorf("proxy server empty")
+	}
 
-	// === ДОБАВЛЯЕМ SOCKS5 ПРОКСИ ===
-	logger.Info("Proxy configuration values",
-		"ProxyUrl", cfg.ProxyUrl,
-		"ProxyUrl_len", len(cfg.ProxyUrl),
-		"ProxyPort", cfg.ProxyPort,
-		"ProxyUser", cfg.ProxyUser,
-		"ProxyUser_len", len(cfg.ProxyUser),
-		"ProxyPassword", "***",
-		"ProxyPassword_len", len(cfg.ProxyPassword))
+	logger.Info("Adding proxy",
+		"server", server,
+		"port", cfg.ProxyPort,
+	)
 
-	p, err := tdClient.AddProxy(&client.AddProxyRequest{
-		Server: cfg.ProxyUrl,
+	proxy, err := tdClient.AddProxy(&client.AddProxyRequest{
+		Server: server,
 		Port:   cfg.ProxyPort,
 		Type: &client.ProxyTypeSocks5{
 			Username: cfg.ProxyUser,
 			Password: cfg.ProxyPassword,
 		},
 	})
-
 	if err != nil {
-		logger.Error("TDLib AddProxy error", "error", err)
+		logger.Error("AddProxy failed", "error", err)
 		return nil, err
 	}
 
-	_, err = tdClient.EnableProxy(&client.EnableProxyRequest{ProxyId: p.Id})
+	_, err = tdClient.EnableProxy(&client.EnableProxyRequest{
+		ProxyId: proxy.Id,
+	})
 	if err != nil {
-		logger.Error("TDLib EnableProxy error", "error", err)
+		logger.Error("EnableProxy failed", "error", err)
 		return nil, err
 	}
 
-	// === ПРОКСИ ВКЛЮЧЕН ===
-	// Получаем информацию о себе (боте) — понадобится для GetChatMember
+	logger.Info("Proxy enabled", "proxy_id", proxy.Id)
+
+	// 4️⃣ Теперь запускаем авторизацию
+	go client.CliInteractor(authorizer)
+
+	// 5️⃣ Ждём полной авторизации
 	me, err := tdClient.GetMe()
 	if err != nil {
 		logger.Error("GetMe failed", "error", err)
 		return nil, err
 	}
-	logger.Info("TDLib client initialized and authorized", "self_id", me.Id)
-	return &TDLibClient{client: tdClient, logger: logger, selfId: me.Id}, nil
+
+	logger.Info("TDLib authorized successfully", "self_id", me.Id)
+
+	return &TDLibClient{
+		client: tdClient,
+		logger: logger,
+		selfId: me.Id,
+	}, nil
 }
 
 // JoinChannel подписывается на публичный канал по его username, если ещё не подписан
