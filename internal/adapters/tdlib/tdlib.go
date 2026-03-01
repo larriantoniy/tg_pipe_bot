@@ -26,7 +26,7 @@ func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, e
 		ApiHash:            cfg.APIHash,
 		SystemLanguageCode: "en",
 		DeviceModel:        "GoUserBot",
-		ApplicationVersion: "0.1",
+		ApplicationVersion: "0.2",
 		UseMessageDatabase: true,
 		UseFileDatabase:    true,
 		DatabaseDirectory:  "./tdlib-db",
