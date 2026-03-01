@@ -55,7 +55,7 @@ func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, e
 
 	proxy, err := tdClient.AddProxy(&client.AddProxyRequest{
 		Server: server,
-		Port:   cfg.ProxyPort,
+		Port:   44304,
 		Type: &client.ProxyTypeSocks5{
 			Username: cfg.ProxyUser,
 			Password: cfg.ProxyPassword,
