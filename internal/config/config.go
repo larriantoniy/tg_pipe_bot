@@ -36,6 +36,7 @@ func Load() (*Config, error) {
 	basePredictCh := os.Getenv("BASE_PREDICT_CH")
 	basePredictUrl := os.Getenv("BASE_PREDICTION_URL")
 	proxyUrl := os.Getenv("PROXY_URL")
+	fmt.Println("proxy url", proxyUrl)
 	proxyPassword := os.Getenv("PROXY_PASSWORD")
 	proxyUser := os.Getenv("PROXY_USER")
 	proxyPort := os.Getenv("PROXY_PORT")
