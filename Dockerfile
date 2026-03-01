@@ -25,7 +25,7 @@ RUN apt-get update \
 WORKDIR /tdlib
 RUN rm -rf /tdlib/*          && \
     git clone --depth=1 --branch v1.7.0 https://github.com/tdlib/td.git .  && \
-    mkdir build \
+    mkdir build
 
 WORKDIR /tdlib/build
 RUN --mount=type=cache,target=/tdlib/build \
