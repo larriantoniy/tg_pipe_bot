@@ -48,6 +48,8 @@ func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, e
 		return nil, err
 	}
 
+	logger.Info("Authorization successful")
+
 	// === ДОБАВЛЯЕМ SOCKS5 ПРОКСИ ===
 	logger.Info("Proxy configuration values",
 		"ProxyUrl", cfg.ProxyUrl,
@@ -61,7 +63,6 @@ func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, e
 	p, err := tdClient.AddProxy(&client.AddProxyRequest{
 		Server: cfg.ProxyUrl,
 		Port:   cfg.ProxyPort,
-		Enable: true, // сразу включить
 		Type: &client.ProxyTypeSocks5{
 			Username: cfg.ProxyUser,
 			Password: cfg.ProxyPassword,
