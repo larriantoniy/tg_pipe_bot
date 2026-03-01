@@ -59,12 +59,9 @@ func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, e
 			Password: cfg.ProxyPassword,
 		},
 	})
-	logger.Info("AddProxy request",
-		"server", p.Server,
-		"port", p.Port,
-		"enable", p.IsEnabled,
-		"type", "SOCKS5")
+
 	if err != nil {
+		logger.Error("TDLib AddProxy error", "error", err)
 		return nil, err
 	}
 
