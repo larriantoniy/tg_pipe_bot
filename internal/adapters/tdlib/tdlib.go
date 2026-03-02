@@ -36,41 +36,26 @@ func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, e
 	}); err != nil {
 		logger.Error("TDLib SetLogVerbosityLevel", "error", err)
 	}
-	// 1️⃣ Создаём authorizer (но не запускаем CLI!)
+	// 1️⃣ Создаём authorizer и сразу запускаем CLI interactor,
+	// чтобы не зависнуть на WaitPhoneNumber/WaitCode внутри NewClient.
 	authorizer := client.ClientAuthorizer(tdParams)
-
-	tdClient, err := client.NewClient(authorizer)
-	if err != nil {
-		return nil, err
-	}
-
-	// ТОЛЬКО ТЕПЕРЬ добавляем прокси
-	proxy, err := tdClient.AddProxy(&client.AddProxyRequest{
-		Server: cfg.ProxyUrl,
-		Port:   cfg.ProxyPort,
-		Enable: true,
-		Type: &client.ProxyTypeSocks5{
-			Username: cfg.ProxyUser,
-			Password: cfg.ProxyPassword,
-		},
-	})
-	if err != nil {
-		logger.Error("AddProxy failed", "error", err)
-		return nil, err
-	}
-
-	_, err = tdClient.EnableProxy(&client.EnableProxyRequest{
-		ProxyId: proxy.Id,
-	})
-	if err != nil {
-		logger.Error("EnableProxy failed", "error", err)
-		return nil, err
-	}
-
-	logger.Info("Proxy enabled", "proxy_id", proxy.Id)
-
-	// 4️⃣ Теперь запускаем авторизацию
 	go client.CliInteractor(authorizer)
+
+	tdClient, err := client.NewClient(
+		authorizer,
+		client.WithProxy(&client.AddProxyRequest{
+			Server: cfg.ProxyUrl,
+			Port:   cfg.ProxyPort,
+			Enable: true,
+			Type: &client.ProxyTypeSocks5{
+				Username: cfg.ProxyUser,
+				Password: cfg.ProxyPassword,
+			},
+		}),
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	// 5️⃣ Ждём полной авторизации
 	me, err := tdClient.GetMe()
