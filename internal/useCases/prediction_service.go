@@ -131,12 +131,6 @@ func (p *PredictionService) GetOutcomeOnly(capper, teams, baseURL string) (strin
 		rawOutcome := bet.Find(".exspres .col-6.d-block.d-md-none.order-1").First().Text()
 		outcome = strings.TrimSpace(strings.Join(strings.Fields(rawOutcome), " "))
 		found = true
-		fmt.Println("team1:", team1)
-		fmt.Println("team2:", team2)
-		fmt.Println("nsides1:", nsides1)
-		fmt.Println("nsides2:", nsides2)
-		fmt.Println("na:", na)
-		fmt.Println("nb:", nb)
 		return false // stop
 	})
 
