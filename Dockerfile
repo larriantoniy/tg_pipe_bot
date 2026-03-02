@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1
 
+ARG TDLIB_COMMIT=22d49d5b87a4d5fc60a194dab02dd1d71529687f
+
 # 1) Сборка TDLib (shared libs)
 FROM ubuntu:22.04 AS tdlib-builder
+ARG TDLIB_COMMIT
 # Чтобы установка php-cli (и tzdata) не останавливала сборку на выбор часового пояса
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
@@ -25,6 +28,8 @@ RUN apt-get update \
 WORKDIR /tdlib
 RUN rm -rf /tdlib/*          && \
     git clone --depth=1 https://github.com/tdlib/td.git .  && \
+    git fetch --depth=1 origin ${TDLIB_COMMIT}            && \
+    git checkout ${TDLIB_COMMIT}                          && \
     mkdir build
 
 WORKDIR /tdlib/build

@@ -22,11 +22,6 @@ type Config struct {
 	Env            string `yaml:"env" env-required:"true"`
 }
 
-func toInt32(s string) int32 {
-	v, _ := strconv.ParseInt(s, 10, 32)
-	return int32(v)
-}
-
 // Load читает настройки из переменных окружения
 func Load() (*Config, error) {
 	path := fetchConfigPath()
@@ -36,7 +31,6 @@ func Load() (*Config, error) {
 	basePredictCh := os.Getenv("BASE_PREDICT_CH")
 	basePredictUrl := os.Getenv("BASE_PREDICTION_URL")
 	proxyUrl := os.Getenv("PROXY_URL")
-	fmt.Println("proxy url", proxyUrl)
 	proxyPassword := os.Getenv("PROXY_PASSWORD")
 	proxyUser := os.Getenv("PROXY_USER")
 	proxyPort := os.Getenv("PROXY_PORT")
@@ -49,6 +43,10 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid TELEGRAM_API_ID: %w", err)
 	}
+	proxyPortInt, err := strconv.Atoi(proxyPort)
+	if err != nil || proxyPortInt <= 0 || proxyPortInt > 65535 {
+		return nil, fmt.Errorf("invalid PROXY_PORT: %q", proxyPort)
+	}
 	apiID32 := int32(apiID)
 
 	return &Config{
@@ -58,7 +56,7 @@ func Load() (*Config, error) {
 		BasePredictUrl: basePredictUrl,
 		BasePredictCh:  basePredictCh,
 		ProxyUrl:       proxyUrl,
-		ProxyPort:      toInt32(proxyPort),
+		ProxyPort:      int32(proxyPortInt),
 		ProxyUser:      proxyUser,
 		ProxyPassword:  proxyPassword,
 	}, nil

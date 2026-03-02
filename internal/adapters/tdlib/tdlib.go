@@ -44,9 +44,6 @@ func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, e
 		return nil, err
 	}
 
-	// 🔥 СНАЧАЛА запускаем авторизацию
-	go client.CliInteractor(authorizer)
-
 	// ТОЛЬКО ТЕПЕРЬ добавляем прокси
 	proxy, err := tdClient.AddProxy(&client.AddProxyRequest{
 		Server: cfg.ProxyUrl,
