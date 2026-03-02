@@ -39,30 +39,19 @@ func NewClient(logger *slog.Logger, cfg *config.Config) (ports.TelegramClient, e
 	// 1️⃣ Создаём authorizer (но не запускаем CLI!)
 	authorizer := client.ClientAuthorizer(tdParams)
 
-	// 2️⃣ Создаём TDLib client
 	tdClient, err := client.NewClient(authorizer)
 	if err != nil {
-		logger.Error("TDLib NewClient error", "error", err)
 		return nil, err
 	}
-	version, _ := tdClient.GetOption(&client.GetOptionRequest{
-		Name: "version",
-	})
-	fmt.Println("TDLib version:", version)
-	// 3️⃣ ДО авторизации добавляем прокси
-	server := strings.TrimSpace(cfg.ProxyUrl)
-	if server == "" {
-		return nil, fmt.Errorf("proxy server empty")
-	}
 
-	logger.Info("Adding proxy",
-		"server", server,
-		"port", cfg.ProxyPort,
-	)
+	// 🔥 СНАЧАЛА запускаем авторизацию
+	go client.CliInteractor(authorizer)
 
+	// ТОЛЬКО ТЕПЕРЬ добавляем прокси
 	proxy, err := tdClient.AddProxy(&client.AddProxyRequest{
-		Server: server,
+		Server: cfg.ProxyUrl,
 		Port:   cfg.ProxyPort,
+		Enable: true,
 		Type: &client.ProxyTypeSocks5{
 			Username: cfg.ProxyUser,
 			Password: cfg.ProxyPassword,
