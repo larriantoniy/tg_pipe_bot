@@ -121,8 +121,8 @@ func (p *PredictionService) GetOutcomeOnly(capper, teams, baseURL string) (strin
 		nsides2 := normalizeName(team2)
 
 		// Совпадение: обе искомые команды присутствуют (порядок неважен)
-		match := (strings.Contains(nsides1, na) && strings.Contains(nsides2, nb)) ||
-			(strings.Contains(nsides1, nb) && strings.Contains(nsides2, na))
+		match := (teamNamesMatch(na, nsides1) && teamNamesMatch(nb, nsides2)) ||
+			(teamNamesMatch(nb, nsides1) && teamNamesMatch(na, nsides2))
 		if !match {
 			return true // continue
 		}
@@ -168,6 +168,77 @@ func splitTeams(teams string) (string, string) {
 		return a, b
 	}
 	return strings.TrimSpace(teams), ""
+}
+
+func teamNamesMatch(expected, actual string) bool {
+	if expected == "" || actual == "" {
+		return false
+	}
+
+	if strings.Contains(actual, expected) || strings.Contains(expected, actual) {
+		return true
+	}
+
+	expParts := strings.Fields(expected)
+	actParts := strings.Fields(actual)
+	if len(expParts) == 0 || len(actParts) == 0 {
+		return false
+	}
+
+	// Typical case for tennis names: allow small typos in the first and last words, keep middle parts strict.
+	if len(expParts) == len(actParts) && len(expParts) > 1 {
+		for i := 0; i < len(expParts); i++ {
+			allowDiff := i == 0 || i == len(expParts)-1
+			if allowDiff {
+				if !withinCharDiff(expParts[i], actParts[i], 2) {
+					return false
+				}
+				continue
+			}
+
+			if expParts[i] != actParts[i] {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	// Fallback for single-token names or irregular formatting.
+	return withinCharDiff(expected, actual, 2)
+}
+
+func withinCharDiff(a, b string, limit int) bool {
+	ra := []rune(a)
+	rb := []rune(b)
+
+	lenDiff := len(ra) - len(rb)
+	if lenDiff < 0 {
+		lenDiff = -lenDiff
+	}
+	if lenDiff > limit {
+		return false
+	}
+
+	var mismatches int
+	maxLen := len(ra)
+	if len(rb) > maxLen {
+		maxLen = len(rb)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		switch {
+		case i >= len(ra), i >= len(rb):
+			mismatches++
+		case ra[i] != rb[i]:
+			mismatches++
+		}
+		if mismatches > limit {
+			return false
+		}
+	}
+
+	return true
 }
 
 // ExtractCapperAndMatch парсит ТОЛЬКО сообщения строго заданного формата.
